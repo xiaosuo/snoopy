@@ -7,11 +7,18 @@
 #include <arpa/inet.h>
 #include <assert.h>
 
-void rule_list_init(struct rule_list *l)
-{
-	l->first = NULL;
-	l->ptail = &l->first;
-}
+struct rule {
+	uint32_t	start_ip;
+	uint32_t	end_ip;
+	uint16_t	start_port;
+	uint16_t	end_port;
+	struct rule	*next;
+};
+
+struct rule_list {
+	struct rule	*first;
+	struct rule	**ptail;
+};
 
 static int rule_parse_port_rule(struct rule *r, char *line)
 {
@@ -98,14 +105,20 @@ err:
 	return NULL;
 }
 
-int rule_list_load(struct rule_list *l, const char *fn)
+rule_list_t *rule_list_load(const char *fn)
 {
-	FILE *fp = fopen(fn, "r");
+	FILE *fp;
 	char buf[LINE_MAX];
+	rule_list_t *l;
 
-	assert(l->first == NULL);
-	if (!fp)
+	l = malloc(sizeof(*l));
+	if (!l)
 		goto err;
+	l->first = NULL;
+	l->ptail = &l->first;
+	fp = fopen(fn, "r");
+	if (!fp)
+		goto err2;
 	while (fgets(buf, sizeof(buf), fp)) {
 		struct rule *r;
 		int n = strspn(buf, " \t\n");
@@ -115,29 +128,31 @@ int rule_list_load(struct rule_list *l, const char *fn)
 			continue;
 		r = rule_parse(buf + n);
 		if (!r)
-			goto err2;
+			goto err3;
 		r->next = NULL;
 		*(l->ptail) = r;
 		l->ptail = &r->next;
 	}
 	if (!feof(fp) || ferror(fp))
-		goto err2;
+		goto err3;
 	fclose(fp);
 
-	return 0;
-err2:
+	return l;
+err3:
 	fclose(fp);
+err2:
+	free(l);
 err:
-	return -1;
+	return NULL;
 }
 
-bool rule_list_match(struct rule_list *h, be32_t _ip, be16_t _port)
+bool rule_list_match(rule_list_t *l, be32_t _ip, be16_t _port)
 {
 	struct rule *r;
 	uint32_t ip = ntohl(_ip);
 	uint16_t port = ntohs(_port);
 
-	for (r = h->first; r; r = r->next) {
+	for (r = l->first; r; r = r->next) {
 		if (ip >= r->start_ip && ip <= r->end_ip &&
 		    port >= r->start_port && port <= r->end_port)
 			return true;
@@ -146,18 +161,18 @@ bool rule_list_match(struct rule_list *h, be32_t _ip, be16_t _port)
 	return false;
 }
 
-void rule_list_free(struct rule_list *h)
+void rule_list_free(rule_list_t *l)
 {
 	struct rule *r;
 
-	while ((r = h->first) != NULL) {
-		h->first = r->next;
+	while ((r = l->first) != NULL) {
+		l->first = r->next;
 		free(r);
 	}
-	h->ptail = &h->first;
+	free(l);
 }
 
-int rule_list_dump(struct rule_list *l, const char *fn)
+int rule_list_dump(rule_list_t *l, const char *fn)
 {
 	const struct rule *r;
 	FILE *fp = fopen(fn, "w");
@@ -186,12 +201,11 @@ err:
 #ifdef TEST
 int main(void)
 {
-	struct rule_list l;
+	rule_list_t *l;
 
-	rule_list_init(&l);
-	assert(rule_list_load(&l, "../test/rules.conf") == 0);
-	assert(rule_list_dump(&l, "rules.conf") == 0);
-	assert(rule_list_match(&l, inet_addr("192.168.1.2"), htons(80)));
-	rule_list_free(&l);
+	assert((l = rule_list_load("../test/rules.conf")));
+	assert(rule_list_dump(l, "rules.conf") == 0);
+	assert(rule_list_match(l, inet_addr("192.168.1.2"), htons(80)));
+	rule_list_free(l);
 }
 #endif
