@@ -121,7 +121,7 @@ rule_list_t *rule_list_load(const char *fn)
 		goto err2;
 	while (fgets(buf, sizeof(buf), fp)) {
 		struct rule *r;
-		int n = strspn(buf, " \t\n");
+		int n = strspn(buf, " \t\r\n");
 
 		/* skip empty lines */
 		if (buf[n] == '\0')
