@@ -1,4 +1,5 @@
 CFLAGS += -Wall -O2
+LDFLAGS += -lpcap
 TARGETS := snoopy
 OBJS := $(patsubst %.c,%.o,$(wildcard *.c))
 
