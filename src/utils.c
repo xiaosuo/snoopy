@@ -1,6 +1,12 @@
 
 #include "utils.h"
 #include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
 
 static inline unsigned char hexval(unsigned char v)
 {
@@ -52,6 +58,25 @@ void *memdup(const void *data, int len)
 	return r;
 }
 
+int if_get_mtu(const char *name)
+{
+	int s = socket(AF_INET, SOCK_DGRAM, 0);
+	struct ifreq ifr;
+
+	if (s < 0)
+		goto err;
+	strncpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
+	if (ioctl(s, SIOCGIFMTU, &ifr))
+		goto err2;
+	close(s);
+
+	return ifr.ifr_mtu;
+err2:
+	close(s);
+err:
+	return -1;
+}
+
 #ifdef TEST
 #include <assert.h>
 #include <stdio.h>
@@ -63,6 +88,7 @@ int main(void)
 
 	assert(url_decode(buf, strlen(buf)) == 14);
 	printf("%s\n", buf);
+	printf("%d\n", if_get_mtu("en1"));
 
 	return 0;
 }
