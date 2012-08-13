@@ -2,6 +2,7 @@
 #include "http.h"
 #include "utils.h"
 #include <assert.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -223,7 +224,7 @@ err:
 
 static int http_handle_state_start_line(http_inspector_t *insp,
 		struct http_inspect_ctx_common *c, const unsigned char *data,
-		int len, void *user, int is_client)
+		int len, void *user, bool is_client)
 {
 	int n;
 	const unsigned char *ptr;
@@ -303,7 +304,7 @@ err:
 */
 static int http_parse_header_field(http_inspector_t *insp,
 		struct http_inspect_ctx_common *c, char *hdr, void *user,
-		int is_client)
+		bool is_client)
 {
 	char *fv = strchr(hdr, ':');
 
@@ -324,7 +325,7 @@ static int http_parse_header_field(http_inspector_t *insp,
 
 static int http_handle_state_msg_hdr(http_inspector_t *insp,
 		struct http_inspect_ctx_common *c, const unsigned char *data,
-		int len, void *user, int is_client)
+		int len, void *user, bool is_client)
 {
 	int n;
 	const unsigned char *ptr;
@@ -427,7 +428,7 @@ err:
  * return 0 if all the data is consumed or bufferd. */
 static int __http_inspect_x_data(http_inspector_t *insp,
 		struct http_inspect_ctx_common *c, const unsigned char *data,
-		int len, void *user, int is_client)
+		int len, void *user, bool is_client)
 {
 	int n;
 
@@ -467,7 +468,7 @@ err:
 
 static int http_inspect_x_data(http_inspector_t *insp,
 		http_inspect_ctx_t *ctx, const unsigned char *data, int len,
-		void *user, int is_client)
+		void *user, bool is_client)
 {
 	struct http_inspect_ctx_common *c;
 	int n;
