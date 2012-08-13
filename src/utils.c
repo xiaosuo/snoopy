@@ -1,5 +1,6 @@
 
 #include "utils.h"
+#include <assert.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +77,20 @@ err2:
 	close(s);
 err:
 	return -1;
+}
+
+void *memmem(const void *haystack, size_t haystacklen,
+	     const void *needle, size_t needlelen)
+{
+	assert(needlelen > 0);
+
+	while (haystacklen >= needlelen) {
+		if (memcmp(haystack, needle, needlelen) == 0)
+			return (void *)haystack;
+		haystack++;
+	}
+
+	return NULL;
 }
 
 #ifdef TEST
