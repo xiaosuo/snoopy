@@ -1,9 +1,13 @@
 
 #include "utils.h"
+#include "types.h"
+#include "buf.h"
+#include "flow.h"
 #include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
 #include <pcap/pcap.h>
+#include <net/ethernet.h>
 
 static void usage(FILE *out)
 {
@@ -21,19 +25,65 @@ do { \
 	goto err; \
 } while (0)
 
-struct snoopy_ctx {
-	pcap_t	*p;
-	int	n;
-};
-
-void em10mb_handler(u_char *user, const struct pcap_pkthdr *h,
-		    const u_char *bytes)
+static void write_data(flow_t *f, bool is_clnt, const unsigned char *data,
+		int line, void *user)
 {
-	struct snoopy_ctx *c = (struct snoopy_ctx *)user;
+	if (!is_clnt)
+		write(1, data, line);
+}
 
-	printf("got one pkt\n");
-	if (++(c->n) == 10)
-		pcap_breakloop(c->p);
+void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
+		      const u_char *bytes)
+{
+	struct ether_header *eth;
+	struct ip *iph;
+	struct tcphdr *tcph;
+	int len, hl;
+
+	if (h->caplen != h->len) {
+		fprintf(stderr, "truncated packets\n");
+		exit(EXIT_FAILURE);
+	}
+	len = h->len;
+
+	/* ethernet */
+	if (len < sizeof(*eth))
+		goto err;
+	eth = (struct ether_header *)bytes;
+	if (ntohs(eth->ether_type) != ETHERTYPE_IP)
+		goto err;
+	bytes += sizeof(*eth);
+	len -= sizeof(*eth);
+
+	/* ip */
+	if (len < sizeof(*iph))
+		goto err;
+	iph = (struct ip *)bytes;
+	hl = iph->ip_hl * 4;
+	if (hl < sizeof(*iph) || hl > len)
+		goto err;
+	bytes += hl;
+	len -= hl;
+
+	/* tcp */
+	if (iph->ip_p != IPPROTO_TCP)
+		goto err;
+	/* TODO: support IP defragment */
+	if (ntohs(iph->ip_off) & (IP_MF | IP_OFFMASK))
+		goto err;
+	if (len < sizeof(*tcph))
+		goto err;
+	tcph = (struct tcphdr *)bytes;
+	hl = tcph->th_off * 4;
+	if (hl < sizeof(*tcph) || hl > len)
+		goto err;
+	bytes += hl;
+	len -= hl;
+
+	/* flow */
+	flow_inspect(h->ts.tv_sec, iph, tcph, bytes, len, write_data, NULL);
+err:
+	return;
 }
 
 int main(int argc, char *argv[])
@@ -45,7 +95,6 @@ int main(int argc, char *argv[])
 	int snap_len = 0;
 	char err_buf[PCAP_ERRBUF_SIZE];
 	pcap_handler handler;
-	struct snoopy_ctx ctx;
 
 	/* parse the options */
 	while ((o = getopt(argc, argv, "hi:r:s:")) != -1) {
@@ -126,16 +175,16 @@ int main(int argc, char *argv[])
 	/* start the pcap loop */
 	switch (pcap_datalink(p)) {
 	case DLT_EN10MB:
-		handler = em10mb_handler;
+		handler = ethernet_handler;
 		break;
 	default:
 		die("unsupported datalnk: %s\n",
 		    pcap_datalink_val_to_name(pcap_datalink(p)));
 		break;
 	}
-	ctx.p = p;
-	ctx.n = 0;
-	if (pcap_loop(p, -1, handler, (u_char *)&ctx) == -1)
+	if (flow_init())
+		die("failed to initialize flow service\n");
+	if (pcap_loop(p, -1, handler, NULL) == -1)
 		die("pcap_loop(3PCAP) exits with error: %s\n",
 		    pcap_geterr(p));
 
