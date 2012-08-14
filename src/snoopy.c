@@ -17,7 +17,7 @@
 #include <net/ethernet.h>
 
 #ifdef NDEBUG
-# define pr_debug do {} while (0)
+# define pr_debug(fmt, args...) do {} while (0)
 #else
 # define pr_debug(fmt, args...) printf(fmt, ##args)
 #endif /* NDEBUG */
