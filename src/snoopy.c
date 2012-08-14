@@ -25,8 +25,8 @@ do { \
 	goto err; \
 } while (0)
 
-static void write_data(flow_t *f, bool is_clnt, const unsigned char *data,
-		int line, void *user)
+static void write_data(flow_t *f, bool is_clnt, const struct timeval *ts,
+		const unsigned char *data, int line, void *user)
 {
 	if (!is_clnt)
 		write(1, data, line);

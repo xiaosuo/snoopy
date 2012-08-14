@@ -318,10 +318,10 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		if (seq == buf->seq) {
 			struct mb *m;
 
-			h(f, is_clnt, data, len, user);
+			h(f, is_clnt, &l_time, data, len, user);
 			buf_drain_to(buf, seq + len);
 			while ((m = buf_del(buf))) {
-				h(f, is_clnt, m->data, m->len, user);
+				h(f, is_clnt, &l_time, m->data, m->len, user);
 				mb_free(m);
 			}
 		} else if (buf_add(buf, seq, data, len)) {

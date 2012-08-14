@@ -15,7 +15,8 @@ void *flow_get_tag(flow_t *f, int id);
 void flow_del_tag(flow_t *f, int id);
 
 typedef void (*flow_data_handler)(flow_t *f, bool is_clnt,
-		const unsigned char *data, int len, void *user);
+		const struct timeval *ts, const unsigned char *data, int len,
+		void *user);
 
 int flow_init(void);
 int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
