@@ -54,7 +54,7 @@ void *xmemdup(const void *data, int len)
 
 	if (r) {
 		memcpy(r, data, len);
-		((char *)data)[len] = '\0';
+		((char *)r)[len] = '\0';
 	}
 
 	return r;
