@@ -3,11 +3,24 @@
 #include "types.h"
 #include "buf.h"
 #include "flow.h"
+#include "patn.h"
+#include "rule.h"
+#include "log.h"
+#include "http.h"
+#include "snoopy.h"
+#include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <limits.h>
 #include <pcap/pcap.h>
 #include <net/ethernet.h>
+
+#ifdef NDEBUG
+# define pr_debug do {} while (0)
+#else
+# define pr_debug(fmt, args...) printf(fmt, ##args)
+#endif /* NDEBUG */
 
 static void usage(FILE *out)
 {
@@ -25,11 +38,134 @@ do { \
 	goto err; \
 } while (0)
 
-static void write_data(flow_t *f, bool is_clnt, const struct timeval *ts,
-		const unsigned char *data, int line, void *user)
+struct http_req {
+	char		*path;
+	char		*host;
+	struct http_req	*next;
+};
+
+static struct http_req *http_req_alloc()
 {
-	if (!is_clnt)
-		write(1, data, line);
+	return calloc(1, sizeof(struct http_req));
+}
+
+static void http_req_free(struct http_req *r)
+{
+	free(r->path);
+	free(r->host);
+	free(r);
+}
+
+struct snoopy_context {
+	rule_list_t		*rule_list;
+	http_inspector_t	*insp;
+	patn_list_t		*patn_list;
+};
+
+struct flow_context {
+	struct http_req		*req_head;
+	struct http_req		**req_ptail;
+	struct http_req		*req_part;
+	patn_sch_ctx_t		*sch_ctx;
+	http_inspect_ctx_t	*http_ctx;
+	bool			stop_inspect;
+	struct snoopy_context	*snoopy;
+};
+
+static void flow_context_free_data(struct flow_context *fc)
+{
+	struct http_req *r;
+
+	while ((r = fc->req_head)) {
+		fc->req_head = r->next;
+		http_req_free(r);
+	}
+	if (fc->req_part)
+		http_req_free(fc->req_part);
+	if (fc->sch_ctx)
+		patn_sch_ctx_free(fc->sch_ctx);
+	if (fc->http_ctx)
+		http_inspect_ctx_free(fc->http_ctx);
+}
+
+static void flow_context_free(struct flow_context *fc)
+{
+	flow_context_free_data(fc);
+	free(fc);
+}
+
+static struct flow_context *flow_context_alloc(struct snoopy_context *snoopy)
+{
+	struct flow_context *fc = calloc(1, sizeof(*fc));
+
+	if (!fc)
+		goto err;
+	fc->req_ptail = &fc->req_head;
+	fc->snoopy = snoopy;
+
+	return fc;
+err:
+	return NULL;
+}
+
+#define FLOW_TAG_ID	0
+
+struct http_user {
+	struct flow_context	*fc;
+	struct ip		*ip;
+	const struct timeval	*ts;
+};
+
+struct flow_user {
+	struct snoopy_context	*sc;
+	struct ip		*ip;
+};
+
+static void stream_inspect(flow_t *f, bool is_clnt, const struct timeval *ts,
+		const unsigned char *data, int len, void *user)
+{
+	struct flow_context *fc;
+	struct flow_user *fu = user;
+	int r;
+	struct http_user hu;
+
+	fc = flow_get_tag(f, FLOW_TAG_ID);
+	if (!fc) {
+		fc = flow_context_alloc(fu->sc);
+		if (!fc)
+			goto err;
+		if (flow_add_tag(f, FLOW_TAG_ID, fc,
+				(void (*)(void *))flow_context_free))
+			goto err2;
+	}
+
+	if (fc->stop_inspect)
+		goto err;
+
+	hu.fc = fc;
+	hu.ip = fu->ip;
+	hu.ts = ts;
+	if (!fc->http_ctx && !(fc->http_ctx = http_inspect_ctx_alloc()))
+		goto stop_inspect;
+	if (is_clnt)
+		r = http_inspect_client_data(fu->sc->insp, fc->http_ctx,
+				data, len, &hu);
+	else
+		r = http_inspect_server_data(fu->sc->insp, fc->http_ctx,
+				data, len, &hu);
+	if (r) {
+stop_inspect:
+		flow_context_free_data(fc);
+		memset(fc, 0, sizeof(*fc));
+		fc->stop_inspect = true;
+		goto err;
+	}
+
+	return;
+err2:
+	flow_context_free(fc);
+err:
+	return;
 }
 
 void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
@@ -39,9 +175,12 @@ void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 	struct ip *iph;
 	struct tcphdr *tcph;
 	int len, hl;
+	struct snoopy_context *sc = (struct snoopy_context *)user;
+	struct flow_user fu;
 
 	if (h->caplen != h->len) {
-		fprintf(stderr, "truncated packets\n");
+		fprintf(stderr, "truncated packet: %u(%u)\n", h->len,
+			h->caplen);
 		exit(EXIT_FAILURE);
 	}
 	len = h->len;
@@ -74,6 +213,11 @@ void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 	if (len < sizeof(*tcph))
 		goto err;
 	tcph = (struct tcphdr *)bytes;
+	if (!rule_list_match(sc->rule_list, iph->ip_src.s_addr,
+			tcph->th_sport) &&
+	    !rule_list_match(sc->rule_list, iph->ip_dst.s_addr,
+			tcph->th_dport))
+		goto err;
 	hl = tcph->th_off * 4;
 	if (hl < sizeof(*tcph) || hl > len)
 		goto err;
@@ -81,7 +225,99 @@ void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 	len -= hl;
 
 	/* flow */
-	flow_inspect(&h->ts, iph, tcph, bytes, len, write_data, NULL);
+	fu.sc = sc;
+	fu.ip = iph;
+	flow_inspect(&h->ts, iph, tcph, bytes, len, stream_inspect, &fu);
+err:
+	return;
+}
+
+static void save_path(const char *method, const char *path,
+		const char *http_version, void *user)
+{
+	struct http_user *hu = user;
+	struct flow_context *fc = hu->fc;
+
+	if (!fc->req_part && !(fc->req_part = http_req_alloc()))
+			goto err;
+
+	assert(fc->req_part->path == NULL);
+
+	pr_debug("path: %s\n", path);
+	fc->req_part->path = strdup(path);
+err:
+	return;
+}
+
+static void save_host(const char *name, const char *value, void *user)
+{
+	struct http_user *hu = user;
+	struct flow_context *fc = hu->fc;
+	struct http_req *r;
+
+	if (!(r = fc->req_part))
+		goto err;
+	if (!name) {
+		fc->req_part = NULL;
+		*(fc->req_ptail) = r;
+		fc->req_ptail = &r->next;
+	} else if (strcasecmp(name, "Host") == 0) {
+		if (r->host)
+			free(r->host);
+		pr_debug("host: %s\n", value);
+		r->host = strdup(value);
+	}
+err:
+	return;
+}
+
+struct patn_user {
+	const struct timeval	*ts;
+	struct ip		*ip;
+	struct http_req		*r;
+};
+
+static int log_keyword(const char *k, void *user)
+{
+	struct patn_user *pu = user;
+
+	return log_write(pu->ts, pu->ip->ip_dst.s_addr,
+			pu->ip->ip_src.s_addr, pu->r->host, pu->r->path, k);
+}
+
+static void inspect_body(const unsigned char *data, int len, void *user)
+{
+	struct http_user *hu = user;
+	struct flow_context *fc = hu->fc;
+	struct http_req *r;
+
+	if (!(r = fc->req_head))
+		goto err;
+	if (!data) {
+		fc->req_head = r->next;
+		if (!fc->req_head)
+			fc->req_ptail = &fc->req_head;
+		http_req_free(r);
+		if (fc->sch_ctx)
+			patn_sch_ctx_reset(fc->sch_ctx);
+	} else {
+		if (r->host && r->path) {
+			struct patn_user pn = {
+				.ts	= hu->ts,
+				.ip	= hu->ip,
+				.r	= r,
+			};
+			if (!fc->sch_ctx &&
+			    !(fc->sch_ctx = patn_sch_ctx_alloc()))
+				goto err;
+#ifndef NDEBUG
+			if (write(STDOUT_FILENO, data, len) != len)
+				exit(EXIT_FAILURE);
+#endif
+			patn_sch(fc->snoopy->patn_list, fc->sch_ctx, data, len,
+					log_keyword, &pn);
+		}
+	}
 err:
 	return;
 }
@@ -95,6 +331,7 @@ int main(int argc, char *argv[])
 	int snap_len = 0;
 	char err_buf[PCAP_ERRBUF_SIZE];
 	pcap_handler handler;
+	struct snoopy_context *ctx;
 
 	/* parse the options */
 	while ((o = getopt(argc, argv, "hi:r:s:")) != -1) {
@@ -184,7 +421,28 @@ int main(int argc, char *argv[])
 	}
 	if (flow_init())
 		die("failed to initialize flow service\n");
-	if (pcap_loop(p, -1, handler, NULL) == -1)
+	if (log_open(SNOOPY_LOG_FN))
+		die("failed to open log file %s\n", SNOOPY_LOG_FN);
+	ctx = calloc(1, sizeof(*ctx));
+	if (!ctx)
+		die("failed to allocate memory for snoopy context\n");
+	ctx->rule_list = rule_list_load(SNOOPY_RULE_FN);
+	if (!ctx->rule_list)
+		die("failed to load rules in %s\n", SNOOPY_RULE_FN);
+	ctx->insp = http_inspector_alloc();
+	if (!ctx->insp)
+		die("failed to allocate a http inspector\n");
+	if (http_inspector_add_request_line_handler(ctx->insp, save_path))
+		die("failed to add the request line handler\n");
+	if (http_inspector_add_request_header_field_handler(ctx->insp,
+			save_host))
+		die("failed to add the request header field handler\n");
+	if (http_inspector_add_response_body_handler(ctx->insp, inspect_body))
+		die("failed to add the response body handler\n");
+	ctx->patn_list = patn_list_load(SNOOPY_KEY_FN);
+	if (!ctx->patn_list)
+		die("failed to load keywords in %s\n", SNOOPY_KEY_FN);
+	if (pcap_loop(p, -1, handler, (u_char *)ctx) == -1)
 		die("pcap_loop(3PCAP) exits with error: %s\n",
 		    pcap_geterr(p));
 
