@@ -35,7 +35,7 @@ struct flow {
 	struct flow		**hash_pprev;
 	struct flow		*gc_next;
 	struct flow		**gc_pprev;
-	time_t			timeout;
+	struct timeval		timeout;
 };
 
 #define FLOW_GC_INCOMP_TIMEO	30
@@ -52,7 +52,7 @@ static struct flow **l_hash_table = NULL;
 static int l_flow_cnt = 0;
 
 /* this is used to avoid clock rollback */
-static time_t l_time = 0;
+static struct timeval l_time = { 0 };
 
 int flow_add_tag(flow_t *f, int id, void *data, void (*free)(void *data))
 {
@@ -175,7 +175,8 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	buf_init(&f->serv, 0);
 	f->tag = NULL;
 	flow_gc_add(f);
-	f->timeout = l_time + FLOW_GC_INCOMP_TIMEO;
+	f->timeout.tv_sec = l_time.tv_sec + FLOW_GC_INCOMP_TIMEO;
+	f->timeout.tv_usec = l_time.tv_usec;
 	++l_flow_cnt;
 
 	return f;
@@ -242,28 +243,28 @@ static void flow_gc(void)
 	struct flow *f;
 
 	while ((f = l_gc_incomp_head)) {
-		if (f->timeout > l_time)
+		if (timercmp(&f->timeout, &l_time, >))
 			break;
 		flow_free(f);
 	}
 
 	while ((f = l_gc_comp_head)) {
-		if (f->timeout > l_time)
+		if (timercmp(&f->timeout, &l_time, >))
 			break;
 		flow_free(f);
 	}
 }
 
 /* two lists for incomplete flow or complete flow */
-int flow_inspect(time_t ts, struct ip *ip, struct tcphdr *tcph,
+int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		const unsigned char *data, int len, flow_data_handler h,
 		void *user)
 {
 	struct flow *f;
 	bool is_clnt, is_new;
 
-	if (ts > l_time) {
-		l_time = ts;
+	if (timercmp(ts, &l_time, >)) {
+		l_time = *ts;
 		flow_gc();
 	}
 

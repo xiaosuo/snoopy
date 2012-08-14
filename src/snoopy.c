@@ -81,7 +81,7 @@ void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 	len -= hl;
 
 	/* flow */
-	flow_inspect(h->ts.tv_sec, iph, tcph, bytes, len, write_data, NULL);
+	flow_inspect(&h->ts, iph, tcph, bytes, len, write_data, NULL);
 err:
 	return;
 }
