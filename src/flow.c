@@ -217,10 +217,13 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, bool *is_clnt,
 	 * connection randomly to free space */
 	while (l_flow_cnt >= FLOW_NR_MAX) {
 		int bucket = random() & (FLOW_NR_MAX - 1);
+
 		/* TODO: tail drop */
 		for (f = l_hash_table[bucket]; f; f = f->hash_next) {
-			if (f->state < FLOW_STATE_ACK)
+			if (f->state < FLOW_STATE_ACK) {
 				flow_free(f);
+				break;
+			}
 		}
 	}
 
