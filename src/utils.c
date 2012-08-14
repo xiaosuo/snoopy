@@ -88,6 +88,7 @@ void *xmemmem(const void *haystack, size_t haystacklen,
 		if (memcmp(haystack, needle, needlelen) == 0)
 			return (void *)haystack;
 		haystack++;
+		haystacklen--;
 	}
 
 	return NULL;
