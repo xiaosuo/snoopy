@@ -3,6 +3,12 @@ LDFLAGS += -lpcap
 TARGETS := snoopy
 OBJS := $(patsubst %.c,%.o,$(wildcard *.c))
 
+ifeq (${DEBUG},)
+CFLAGS += -DNDEBUG
+else
+CFLAGS += -g
+endif
+
 .PHONY: all install clean
 
 all: ${TARGETS}
