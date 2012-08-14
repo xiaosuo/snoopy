@@ -105,7 +105,7 @@ int flow_init(void)
 	return 0;
 }
 
-static void flow_gc_remove(struct flow *f)
+static void flow_gc_del(struct flow *f)
 {
 	if (!f->gc_pprev)
 		return;
@@ -149,7 +149,7 @@ static void flow_free(struct flow *f)
 	*(f->hash_pprev) = f->hash_next;
 	if (f->hash_next)
 		f->hash_next->hash_pprev = f->hash_pprev;
-	flow_gc_remove(f);
+	flow_gc_del(f);
 	free(f);
 	--l_flow_cnt;
 }
@@ -277,7 +277,7 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		goto out;
 	}
 	if (!is_new)
-		flow_gc_remove(f);
+		flow_gc_del(f);
 	if (tcph->th_flags & TH_SYN) {
 		if (is_clnt) {
 			if (f->state == FLOW_STATE_INIT) {
