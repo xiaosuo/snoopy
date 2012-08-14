@@ -27,13 +27,13 @@ static struct patn *patn_alloc(const unsigned char *data, int len)
 
 	if (!p)
 		goto err;
-	p->raw = memdup(data, len);
+	p->raw = xmemdup(data, len);
 	if (!p->raw)
 		goto err2;
 	p->len = url_decode(p->raw, len);
 	if (p->len < 0)
 		goto err3;
-	p->enc = memdup(data, len);
+	p->enc = xmemdup(data, len);
 	if (!p->enc)
 		goto err3;
 

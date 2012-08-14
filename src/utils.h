@@ -8,7 +8,7 @@
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
 int url_decode(unsigned char *buf, int len);
-void *memdup(const void *data, int len);
+void *xmemdup(const void *data, int len);
 int if_get_mtu(const char *name);
 void *memmem(const void *haystack, size_t haystacklen,
 	     const void *needle, size_t needlelen);

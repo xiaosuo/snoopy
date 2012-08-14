@@ -48,7 +48,7 @@ int url_decode(unsigned char *buf, int len)
 	return dec_len;
 }
 
-void *memdup(const void *data, int len)
+void *xmemdup(const void *data, int len)
 {
 	void *r = malloc(len + 1);
 
