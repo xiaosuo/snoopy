@@ -1,5 +1,5 @@
-                 A simple bypass censorship system for HTTP
-                 ==========================================
+A simple bypass censorship system for HTTP
+==========================================
 
 Introduction
 ------------
