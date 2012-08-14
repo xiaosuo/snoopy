@@ -79,8 +79,8 @@ err:
 	return -1;
 }
 
-void *memmem(const void *haystack, size_t haystacklen,
-	     const void *needle, size_t needlelen)
+void *xmemmem(const void *haystack, size_t haystacklen,
+		const void *needle, size_t needlelen)
 {
 	assert(needlelen > 0);
 
