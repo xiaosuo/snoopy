@@ -1,6 +1,5 @@
 
 #include "buf.h"
-#include "utils.h"
 #include <assert.h>
 #include <string.h>
 
@@ -44,12 +43,14 @@ int buf_add(struct buf *h, uint32_t seq, const unsigned char *data,
 	assert(len > 0);
 
 	/* left edge */
-	mseq = MAX(seq, h->seq);
+	mseq = SEQ_GE(seq, h->seq) ? seq : h->seq;
 	data += mseq - seq;
 	seq = mseq;
 
 	/* right edge */
-	end = MIN(end, h->seq + BUF_LIMIT);
+	mseq = h->seq + BUF_LIMIT;
+	if (SEQ_GT(end, mseq))
+		end = mseq;
 
 	if (!SEQ_LT(seq, end))
 		goto err;
@@ -57,7 +58,8 @@ int buf_add(struct buf *h, uint32_t seq, const unsigned char *data,
 	for (pprev = &h->first; (i = *pprev); pprev = &i->next) {
 		/* seq < i->seq */
 		if (SEQ_LT(seq, i->seq)) {
-			mlen = MIN(end, i->seq) - seq;
+			mseq = SEQ_LE(end, i->seq) ? end : i->seq;
+			mlen = mseq - seq;
 			m = mb_alloc(seq, data, mlen);
 			if (!m)
 				goto err;
