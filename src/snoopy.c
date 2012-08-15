@@ -30,8 +30,11 @@ static void usage(FILE *out)
 	fputs("Options:\n", out);
 	fputs("  -h       show this message\n", out);
 	fputs("  -i NIC   specify the NIC interface\n", out);
+	fputs("  -k FN    specify the keyword file\n", out);
+	fputs("  -l FN    specify the log file\n", out);
 	fputs("  -r FILE  specify the pcap file\n", out);
 	fputs("  -s LEN   specify the snap length\n", out);
+	fputs("  -R FN    specify the rule file\n", out);
 }
 
 #define die(fmt, args...) \
@@ -343,9 +346,12 @@ int main(int argc, char *argv[])
 	char err_buf[PCAP_ERRBUF_SIZE];
 	pcap_handler handler;
 	struct snoopy_context *ctx;
+	const char *rule_fn = SNOOPY_RULE_FN;
+	const char *key_fn = SNOOPY_KEY_FN;
+	const char *log_fn = SNOOPY_LOG_FN;
 
 	/* parse the options */
-	while ((o = getopt(argc, argv, "hi:r:s:")) != -1) {
+	while ((o = getopt(argc, argv, "hi:k:l:r:s:R:")) != -1) {
 		switch (o) {
 		case 'h':
 			usage(stdout);
@@ -356,6 +362,12 @@ int main(int argc, char *argv[])
 				die("FILE and NIC are exclusive\n");
 			nic = optarg;
 			break;
+		case 'k':
+			key_fn = optarg;
+			break;
+		case 'l':
+			log_fn = optarg;
+			break;
 		case 'r':
 			if (file || nic)
 				die("FILE and NIC are exclusive\n");
@@ -365,6 +377,9 @@ int main(int argc, char *argv[])
 			snap_len = atoi(optarg);
 			if (snap_len <= 0)
 				die("invalid snap length %s\n", optarg);
+			break;
+		case 'R':
+			rule_fn = optarg;
 			break;
 		default:
 			usage(stderr);
@@ -432,14 +447,14 @@ int main(int argc, char *argv[])
 	}
 	if (flow_init())
 		die("failed to initialize flow service\n");
-	if (log_open(SNOOPY_LOG_FN))
-		die("failed to open log file %s\n", SNOOPY_LOG_FN);
+	if (log_open(log_fn))
+		die("failed to open log file %s\n", log_fn);
 	ctx = calloc(1, sizeof(*ctx));
 	if (!ctx)
 		die("failed to allocate memory for snoopy context\n");
-	ctx->rule_list = rule_list_load(SNOOPY_RULE_FN);
+	ctx->rule_list = rule_list_load(rule_fn);
 	if (!ctx->rule_list)
-		die("failed to load rules in %s\n", SNOOPY_RULE_FN);
+		die("failed to load rules in %s\n", rule_fn);
 	ctx->insp = http_inspector_alloc();
 	if (!ctx->insp)
 		die("failed to allocate a http inspector\n");
@@ -450,9 +465,9 @@ int main(int argc, char *argv[])
 		die("failed to add the request header field handler\n");
 	if (http_inspector_add_response_body_handler(ctx->insp, inspect_body))
 		die("failed to add the response body handler\n");
-	ctx->patn_list = patn_list_load(SNOOPY_KEY_FN);
+	ctx->patn_list = patn_list_load(key_fn);
 	if (!ctx->patn_list)
-		die("failed to load keywords in %s\n", SNOOPY_KEY_FN);
+		die("failed to load keywords in %s\n", key_fn);
 	if (pcap_loop(p, -1, handler, (u_char *)ctx) == -1)
 		die("pcap_loop(3PCAP) exits with error: %s\n",
 		    pcap_geterr(p));
