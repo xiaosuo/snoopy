@@ -41,6 +41,7 @@ struct flow {
 #define FLOW_GC_INCOMP_TIMEO	30
 #define FLOW_GC_COMP_TIMEO	300
 #define FLOW_NR_MAX		(1 << 20)
+#define FLOW_EARLY_DROP_LIMIT	10
 
 static struct flow *l_gc_incomp_head = NULL;
 static struct flow **l_gc_incomp_ptail = &l_gc_incomp_head;
@@ -190,6 +191,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, bool *is_clnt,
 	struct flow *f;
 	uint32_t hash = flow_hash(ip->ip_src.s_addr, ip->ip_dst.s_addr,
 			tcph->th_sport, tcph->th_dport);
+	int early_drop_limit = FLOW_EARLY_DROP_LIMIT;
 
 	hash &= FLOW_NR_MAX - 1;
 	for (f = l_hash_table[hash]; f; f = f->hash_next) {
@@ -216,8 +218,12 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, bool *is_clnt,
 	/* the flow table is full, so we need to drop some incomplete
 	 * connection randomly to free space */
 	while (l_flow_cnt >= FLOW_NR_MAX) {
-		int bucket = random() & (FLOW_NR_MAX - 1);
+		int bucket;
 
+		if (--early_drop_limit < 0)
+			goto err;
+
+		bucket = random() & (FLOW_NR_MAX - 1);
 		/* TODO: tail drop */
 		for (f = l_hash_table[bucket]; f; f = f->hash_next) {
 			if (f->state < FLOW_STATE_ACK) {
