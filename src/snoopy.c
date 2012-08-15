@@ -28,6 +28,7 @@ static void usage(FILE *out)
 {
 	fputs("Usage: snoopy [options] pcap-program\n", out);
 	fputs("Options:\n", out);
+	fputs("  -b       run as a background daemon\n", out);
 	fputs("  -h       show this message\n", out);
 	fputs("  -i NIC   specify the NIC interface\n", out);
 	fputs("  -k FN    specify the keyword file\n", out);
@@ -349,10 +350,14 @@ int main(int argc, char *argv[])
 	const char *rule_fn = SNOOPY_RULE_FN;
 	const char *key_fn = SNOOPY_KEY_FN;
 	const char *log_fn = SNOOPY_LOG_FN;
+	bool background = false;
 
 	/* parse the options */
-	while ((o = getopt(argc, argv, "hi:k:l:r:s:R:")) != -1) {
+	while ((o = getopt(argc, argv, "bhi:k:l:r:s:R:")) != -1) {
 		switch (o) {
+		case 'b':
+			background = true;
+			break;
 		case 'h':
 			usage(stdout);
 			goto out;
@@ -468,6 +473,8 @@ int main(int argc, char *argv[])
 	ctx->patn_list = patn_list_load(key_fn);
 	if (!ctx->patn_list)
 		die("failed to load keywords in %s\n", key_fn);
+	if (daemon(0, 0))
+		die("failed to become a background daemon\n");
 	if (pcap_loop(p, -1, handler, (u_char *)ctx) == -1)
 		die("pcap_loop(3PCAP) exits with error: %s\n",
 		    pcap_geterr(p));
