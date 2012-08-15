@@ -22,6 +22,8 @@
 # define pr_debug(fmt, args...) printf(fmt, ##args)
 #endif /* NDEBUG */
 
+#define VLAN_HLEN 4
+
 static void usage(FILE *out)
 {
 	fputs("Usage: snoopy [options] pcap-program\n", out);
@@ -379,7 +381,7 @@ int main(int argc, char *argv[])
 			snap_len = if_get_mtu(nic);
 			if (snap_len < 0)
 				die("failed to get the mtu of %s\n", nic);
-			snap_len += 12 + 2 + 4;
+			snap_len += sizeof(struct ether_header) + VLAN_HLEN;
 			printf("determined snap length: %d\n", snap_len);
 		}
 		err_buf[0] = '\0';
