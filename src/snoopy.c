@@ -198,6 +198,15 @@ void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 	if (len < sizeof(*iph))
 		goto err;
 	iph = (struct ip *)bytes;
+	/* strip out the padding bytes if any */
+	hl = ntohs(iph->ip_len);
+	if (hl > len) {
+		goto err;
+	} else if (hl < len) {
+		if (hl < sizeof(*iph))
+			goto err;
+		len = hl;
+	}
 	hl = iph->ip_hl * 4;
 	if (hl < sizeof(*iph) || hl > len)
 		goto err;
