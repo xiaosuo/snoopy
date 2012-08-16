@@ -15,6 +15,7 @@
 #include <limits.h>
 #include <pcap/pcap.h>
 #include <net/ethernet.h>
+#include <net/ppp_defs.h>
 
 #ifdef NDEBUG
 # define pr_debug(fmt, args...) do {} while (0)
@@ -177,6 +178,22 @@ struct vlan_hdr {
 	be16_t	encapsulated_proto;
 };
 
+#ifndef ETHERTYPE_PPPOE
+#define ETHERTYPE_PPPOE 0x8864
+#endif
+
+struct pppoe_hdr {
+	uint8_t	vertype;
+	uint8_t	code;
+	be16_t	sid;
+	be16_t	len;
+} __attribute__((packed));
+
+struct pppoe_ses_hdr {
+	struct pppoe_hdr	ph;
+	be16_t			proto;
+} __attribute__((packed));
+
 void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 		      const u_char *bytes)
 {
@@ -187,6 +204,7 @@ void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 	struct snoopy_context *sc = (struct snoopy_context *)user;
 	struct flow_user fu;
 	struct vlan_hdr *vlan;
+	struct pppoe_ses_hdr *pppoe_ses;
 
 	if (h->caplen != h->len) {
 		fprintf(stderr, "truncated packet: %u(%u)\n", h->len,
@@ -214,6 +232,15 @@ again:
 		len -= sizeof(*vlan);
 		proto = ntohs(vlan->encapsulated_proto);
 		goto again;
+		break;
+	case ETHERTYPE_PPPOE:
+		if (len < sizeof(*pppoe_ses))
+			goto err;
+		pppoe_ses = (struct pppoe_ses_hdr *)bytes;
+		bytes += sizeof(*pppoe_ses);
+		len -= sizeof(*pppoe_ses);
+		if (ntohs(pppoe_ses->proto) != PPP_IP)
+			goto err;
 		break;
 	default:
 		goto err;
