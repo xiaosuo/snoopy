@@ -550,7 +550,7 @@ int main(int argc, char *argv[])
 	ctx->patn_list = patn_list_load(key_fn);
 	if (!ctx->patn_list)
 		die("failed to load keywords in %s\n", key_fn);
-	if (daemon(0, 0))
+	if (background && daemon(0, 0))
 		die("failed to become a background daemon\n");
 	ctx->is_lazy = lazy;
 	if (pcap_loop(p, -1, handler, (u_char *)ctx) == -1)
