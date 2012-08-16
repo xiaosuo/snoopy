@@ -175,6 +175,10 @@ err:
 	return;
 }
 
+#ifndef ETHERTYPE_VLAN
+#define ETHERTYPE_VLAN 0x8100
+#endif
+
 struct vlan_hdr {
 	be16_t	tci;
 	be16_t	encapsulated_proto;
