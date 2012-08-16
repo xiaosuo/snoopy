@@ -174,15 +174,21 @@ err:
 	return;
 }
 
+struct vlan_hdr {
+	be16_t	tci;
+	be16_t	encapsulated_proto;
+};
+
 void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 		      const u_char *bytes)
 {
 	struct ether_header *eth;
 	struct ip *iph;
 	struct tcphdr *tcph;
-	int len, hl;
+	int len, hl, proto;
 	struct snoopy_context *sc = (struct snoopy_context *)user;
 	struct flow_user fu;
+	struct vlan_hdr *vlan;
 
 	if (h->caplen != h->len) {
 		fprintf(stderr, "truncated packet: %u(%u)\n", h->len,
@@ -195,10 +201,25 @@ void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 	if (len < sizeof(*eth))
 		goto err;
 	eth = (struct ether_header *)bytes;
-	if (ntohs(eth->ether_type) != ETHERTYPE_IP)
-		goto err;
 	bytes += sizeof(*eth);
 	len -= sizeof(*eth);
+	proto = ntohs(eth->ether_type);
+again:
+	switch (proto) {
+	case ETHERTYPE_IP:
+		break;
+	case ETHERTYPE_VLAN:
+		if (len < sizeof(*vlan))
+			goto err;
+		vlan = (struct vlan_hdr *)bytes;
+		bytes += sizeof(*vlan);
+		len -= sizeof(*vlan);
+		proto = ntohs(vlan->encapsulated_proto);
+		goto again;
+		break;
+	default:
+		goto err;
+	}
 
 	/* ip */
 	if (len < sizeof(*iph))
