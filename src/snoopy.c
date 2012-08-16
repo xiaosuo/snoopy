@@ -37,6 +37,7 @@ static void usage(FILE *out)
 	fputs("  -r FILE  specify the pcap file\n", out);
 	fputs("  -s LEN   specify the snap length\n", out);
 	fputs("  -R FN    specify the rule file\n", out);
+	fputs("  -z       switch to lazy mode\n", out);
 }
 
 #define die(fmt, args...) \
@@ -67,6 +68,7 @@ struct snoopy_context {
 	rule_list_t		*rule_list;
 	http_inspector_t	*insp;
 	patn_list_t		*patn_list;
+	bool			is_lazy;
 };
 
 struct flow_context {
@@ -346,14 +348,27 @@ struct patn_user {
 	const struct timeval	*ts;
 	struct ip		*ip;
 	struct http_req		*r;
+	struct flow_context	*fc;
 };
 
 static int log_keyword(const char *k, void *user)
 {
 	struct patn_user *pu = user;
+	struct flow_context *fc = pu->fc;
+	int r;
 
-	return log_write(pu->ts, pu->ip->ip_dst.s_addr,
+	r = log_write(pu->ts, pu->ip->ip_dst.s_addr,
 			pu->ip->ip_src.s_addr, pu->r->host, pu->r->path, k);
+	if (r < 0)
+		return r;
+	if (fc->snoopy->is_lazy) {
+		flow_context_free_data(fc);
+		memset(fc, 0, sizeof(*fc));
+		fc->stop_inspect = true;
+		return 1;
+	}
+
+	return 0;
 }
 
 static void inspect_body(const unsigned char *data, int len, void *user)
@@ -377,6 +392,7 @@ static void inspect_body(const unsigned char *data, int len, void *user)
 				.ts	= hu->ts,
 				.ip	= hu->ip,
 				.r	= r,
+				.fc	= fc,
 			};
 			if (!fc->sch_ctx &&
 			    !(fc->sch_ctx = patn_sch_ctx_alloc()))
@@ -407,9 +423,10 @@ int main(int argc, char *argv[])
 	const char *key_fn = SNOOPY_KEY_FN;
 	const char *log_fn = SNOOPY_LOG_FN;
 	bool background = false;
+	bool lazy = false;
 
 	/* parse the options */
-	while ((o = getopt(argc, argv, "bhi:k:l:r:s:R:")) != -1) {
+	while ((o = getopt(argc, argv, "bhi:k:l:r:s:zR:")) != -1) {
 		switch (o) {
 		case 'b':
 			background = true;
@@ -438,6 +455,9 @@ int main(int argc, char *argv[])
 			snap_len = atoi(optarg);
 			if (snap_len <= 0)
 				die("invalid snap length %s\n", optarg);
+			break;
+		case 'z':
+			lazy = true;
 			break;
 		case 'R':
 			rule_fn = optarg;
@@ -532,6 +552,7 @@ int main(int argc, char *argv[])
 		die("failed to load keywords in %s\n", key_fn);
 	if (daemon(0, 0))
 		die("failed to become a background daemon\n");
+	ctx->is_lazy = lazy;
 	if (pcap_loop(p, -1, handler, (u_char *)ctx) == -1)
 		die("pcap_loop(3PCAP) exits with error: %s\n",
 		    pcap_geterr(p));
