@@ -15,7 +15,9 @@
 #include <limits.h>
 #include <pcap/pcap.h>
 #include <net/ethernet.h>
+#ifndef __APPLE__
 #include <net/ppp_defs.h>
+#endif
 
 #ifdef NDEBUG
 # define pr_debug(fmt, args...) do {} while (0)
@@ -180,6 +182,10 @@ struct vlan_hdr {
 
 #ifndef ETHERTYPE_PPPOE
 #define ETHERTYPE_PPPOE 0x8864
+#endif
+
+#ifndef PPP_IP
+#define PPP_IP	0x21
 #endif
 
 struct pppoe_hdr {
