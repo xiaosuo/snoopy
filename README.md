@@ -29,7 +29,7 @@ Install the program with
 
 or
 
-    &#35; make install
+    # make install
 
 ## Configurations
 
