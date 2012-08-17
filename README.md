@@ -73,7 +73,7 @@ The default log file is */var/log/snoopy.log*, and you can set it to another
 file with option *-l* too.
 
 A log occupies one line, and contains *Timestamp*(derived from
-[RFC3339](http://tools.ietf.org/html/rfc3339)), *Client IP*, *Server IP* and
+[RFC3339](http://tools.ietf.org/html/rfc3339)), *Client IP*, *Server IP*,
 *URL* and *Keyword*, which are separated by space.
 
 Ex.
