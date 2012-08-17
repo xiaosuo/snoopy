@@ -20,10 +20,15 @@ Changli Gao <xiaosuo@gmail.com>
 ## Install
 
 Compile the code with
+
     $ make
+
 Install the program with
+
     $ sudo make install
+
 or
+
     &#35; make install
 
 ## Configurations
@@ -38,6 +43,7 @@ with *:*. You can specify *IP*, *IP Range* and *IP Subnet* for *IP Sections*,
 and you can specify *Port* and *Port Range* for *Port Sections*.
 
 Ex.
+
     192.168.0.0/24:80
     10.0.0.1-10.0.0.10:80-8080
     10.10.10.10:8080
@@ -51,12 +57,14 @@ A key occupies one line, and the non-ASCII characters should be encoded with
 URL encoding specified in [RFC3986](http://tools.ietf.org/html/rfc3986).
 
 Ex.
+
     test
     %12%34%ab%cd
 
 ## Run
 
 See the help message with
+
     snoopy -h
 
 ## Log
@@ -69,4 +77,5 @@ A log occupies one line, and contains *Timestamp*(derived from
 *URL* and *Keyword*, which are separated by space.
 
 Ex.
+
     2012-08-15T15:22:52.682786Z 172.168.0.252 172.168.0.2 http://172.168.0.2/index.html?11a11221=111122a222 welcome
