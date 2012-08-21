@@ -1,4 +1,4 @@
-# A light weighted bypass censorship system for HTTP
+# A lightweight bypass censorship system for HTTP
 
 ## Introduction
 
