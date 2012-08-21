@@ -2,6 +2,7 @@
 #include "flow.h"
 #include "types.h"
 #include "buf.h"
+#include <assert.h>
 #include <time.h>
 
 enum {
@@ -124,6 +125,8 @@ static void flow_gc_del(struct flow *f)
 
 static void flow_gc_add(struct flow *f)
 {
+	assert(!f->gc_pprev);
+
 	f->gc_next = NULL;
 	if (f->state < FLOW_STATE_ACK) {
 		*(l_gc_incomp_ptail) = f;
@@ -175,6 +178,7 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	buf_init(&f->clnt, 0);
 	buf_init(&f->serv, 0);
 	f->tag = NULL;
+	f->gc_pprev = NULL;
 	flow_gc_add(f);
 	f->timeout.tv_sec = l_time.tv_sec + FLOW_GC_INCOMP_TIMEO;
 	f->timeout.tv_usec = l_time.tv_usec;
