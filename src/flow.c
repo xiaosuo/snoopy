@@ -314,8 +314,16 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		if ((f->state & FLOW_STATE_BOTH_SYN) == FLOW_STATE_BOTH_SYN)
 			f->state |= FLOW_STATE_ACK;
 	}
-	if (!is_new)
+	if (!is_new) {
+		if (f->state < FLOW_STATE_ACK)
+			f->timeout.tv_sec = l_time.tv_sec +
+					FLOW_GC_INCOMP_TIMEO;
+		else
+			f->timeout.tv_sec = l_time.tv_sec +
+					FLOW_GC_COMP_TIMEO;
+		f->timeout.tv_usec = l_time.tv_usec;
 		flow_gc_add(f);
+	}
 
 	if ((f->state & FLOW_STATE_ACK) && len > 0) {
 		uint32_t seq = ntohl(tcph->th_seq);
