@@ -117,6 +117,16 @@ err:
 	return NULL;
 }
 
+static void flow_context_reset(struct flow_context *fc)
+{
+	struct snoopy_context *snoopy = fc->snoopy;
+
+	flow_context_free_data(fc);
+	memset(fc, 0, sizeof(*fc));
+	fc->req_ptail = &fc->req_head;
+	fc->snoopy = snoopy;
+}
+
 #define FLOW_TAG_ID	0
 
 struct http_user {
@@ -164,8 +174,7 @@ static void stream_inspect(flow_t *f, bool is_clnt, const struct timeval *ts,
 				data, len, &hu);
 	if (r) {
 stop_inspect:
-		flow_context_free_data(fc);
-		memset(fc, 0, sizeof(*fc));
+		flow_context_reset(fc);
 		fc->stop_inspect = true;
 		goto err;
 	}
@@ -362,8 +371,7 @@ static int log_keyword(const char *k, void *user)
 	if (r < 0)
 		return r;
 	if (fc->snoopy->is_lazy) {
-		flow_context_free_data(fc);
-		memset(fc, 0, sizeof(*fc));
+		flow_context_reset(fc);
 		fc->stop_inspect = true;
 		return 1;
 	}
