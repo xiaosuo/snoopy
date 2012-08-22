@@ -418,12 +418,11 @@ int main(int argc, char *argv[])
 	int snap_len = 0;
 	char err_buf[PCAP_ERRBUF_SIZE];
 	pcap_handler handler;
-	struct snoopy_context *ctx;
+	struct snoopy_context ctx = { 0 };
 	const char *rule_fn = SNOOPY_RULE_FN;
 	const char *key_fn = SNOOPY_KEY_FN;
 	const char *log_fn = SNOOPY_LOG_FN;
 	bool background = false;
-	bool lazy = false;
 
 	/* parse the options */
 	while ((o = getopt(argc, argv, "bhi:k:l:r:s:zR:")) != -1) {
@@ -457,7 +456,7 @@ int main(int argc, char *argv[])
 				die("invalid snap length %s\n", optarg);
 			break;
 		case 'z':
-			lazy = true;
+			ctx.is_lazy = true;
 			break;
 		case 'R':
 			rule_fn = optarg;
@@ -531,29 +530,25 @@ int main(int argc, char *argv[])
 		die("failed to initialize flow service\n");
 	if (log_open(log_fn))
 		die("failed to open log file %s\n", log_fn);
-	ctx = calloc(1, sizeof(*ctx));
-	if (!ctx)
-		die("failed to allocate memory for snoopy context\n");
-	ctx->rule_list = rule_list_load(rule_fn);
-	if (!ctx->rule_list)
+	ctx.rule_list = rule_list_load(rule_fn);
+	if (!ctx.rule_list)
 		die("failed to load rules in %s\n", rule_fn);
-	ctx->insp = http_inspector_alloc();
-	if (!ctx->insp)
+	ctx.insp = http_inspector_alloc();
+	if (!ctx.insp)
 		die("failed to allocate a http inspector\n");
-	if (http_inspector_add_request_line_handler(ctx->insp, save_path))
+	if (http_inspector_add_request_line_handler(ctx.insp, save_path))
 		die("failed to add the request line handler\n");
-	if (http_inspector_add_request_header_field_handler(ctx->insp,
+	if (http_inspector_add_request_header_field_handler(ctx.insp,
 			save_host))
 		die("failed to add the request header field handler\n");
-	if (http_inspector_add_response_body_handler(ctx->insp, inspect_body))
+	if (http_inspector_add_response_body_handler(ctx.insp, inspect_body))
 		die("failed to add the response body handler\n");
-	ctx->patn_list = patn_list_load(key_fn);
-	if (!ctx->patn_list)
+	ctx.patn_list = patn_list_load(key_fn);
+	if (!ctx.patn_list)
 		die("failed to load keywords in %s\n", key_fn);
 	if (background && daemon(0, 0))
 		die("failed to become a background daemon\n");
-	ctx->is_lazy = lazy;
-	if (pcap_loop(p, -1, handler, (u_char *)ctx) == -1)
+	if (pcap_loop(p, -1, handler, (u_char *)&ctx) == -1)
 		die("pcap_loop(3PCAP) exits with error: %s\n",
 		    pcap_geterr(p));
 
