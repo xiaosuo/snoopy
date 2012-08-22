@@ -132,11 +132,14 @@ static void flow_gc_add(struct flow *f)
 		*(l_gc_incomp_ptail) = f;
 		f->gc_pprev = l_gc_incomp_ptail;
 		l_gc_incomp_ptail = &f->gc_next;
+		f->timeout.tv_sec = l_time.tv_sec + FLOW_GC_INCOMP_TIMEO;
 	} else {
 		*(l_gc_comp_ptail) = f;
 		f->gc_pprev = l_gc_comp_ptail;
 		l_gc_comp_ptail = &f->gc_next;
+		f->timeout.tv_sec = l_time.tv_sec + FLOW_GC_COMP_TIMEO;
 	}
+	f->timeout.tv_usec = l_time.tv_usec;
 }
 
 static void flow_free(struct flow *f)
@@ -180,8 +183,6 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	f->tag = NULL;
 	f->gc_pprev = NULL;
 	flow_gc_add(f);
-	f->timeout.tv_sec = l_time.tv_sec + FLOW_GC_INCOMP_TIMEO;
-	f->timeout.tv_usec = l_time.tv_usec;
 	++l_flow_cnt;
 
 	return f;
@@ -319,16 +320,8 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		if ((f->state & FLOW_STATE_BOTH_SYN) == FLOW_STATE_BOTH_SYN)
 			f->state |= FLOW_STATE_ACK;
 	}
-	if (!is_new) {
-		if (f->state < FLOW_STATE_ACK)
-			f->timeout.tv_sec = l_time.tv_sec +
-					FLOW_GC_INCOMP_TIMEO;
-		else
-			f->timeout.tv_sec = l_time.tv_sec +
-					FLOW_GC_COMP_TIMEO;
-		f->timeout.tv_usec = l_time.tv_usec;
+	if (!is_new)
 		flow_gc_add(f);
-	}
 
 	if ((f->state & FLOW_STATE_ACK) && len > 0) {
 		uint32_t seq = ntohl(tcph->th_seq);
