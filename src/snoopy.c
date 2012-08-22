@@ -312,7 +312,7 @@ static void save_path(const char *method, const char *path,
 	struct flow_context *fc = hu->fc;
 
 	if (!fc->req_part && !(fc->req_part = http_req_alloc()))
-			goto err;
+		goto err;
 
 	assert(fc->req_part->path == NULL);
 
