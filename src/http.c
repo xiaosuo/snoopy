@@ -1,8 +1,8 @@
 
 #include "http.h"
 #include "utils.h"
+#include "flow.h"
 #include <assert.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -177,8 +177,7 @@ static int http_inspect_ctx_common_add_line(struct http_inspect_ctx_common *c,
 }
 
 struct http_inspect_ctx {
-	struct http_inspect_ctx_common	clnt;
-	struct http_inspect_ctx_common	serv;
+	struct http_inspect_ctx_common	common[PKT_DIR_NUM];
 };
 
 http_inspect_ctx_t *http_inspect_ctx_alloc(void)
@@ -187,8 +186,8 @@ http_inspect_ctx_t *http_inspect_ctx_alloc(void)
 
 	if (!c)
 		return NULL;
-	http_inspect_ctx_common_init(&c->clnt);
-	http_inspect_ctx_common_init(&c->serv);
+	http_inspect_ctx_common_init(&c->common[PKT_DIR_C2S]);
+	http_inspect_ctx_common_init(&c->common[PKT_DIR_S2C]);
 
 	return c;
 }
@@ -200,6 +199,8 @@ void http_inspect_ctx_free(http_inspect_ctx_t *ctx)
 
 /*
         Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
+       HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
+       DIGIT          = <any US-ASCII digit "0".."9">
 */
 static int http_parse_request_line(http_inspector_t *insp,
 		char *line, void *user)
@@ -222,9 +223,12 @@ err:
 	return -1;
 }
 
+/*
+       Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
+*/
 static int http_handle_state_start_line(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, const unsigned char *data,
-		int len, void *user, bool is_client)
+		struct http_inspect_ctx_common *c, int dir,
+		const unsigned char *data, int len, void *user)
 {
 	int n;
 	const unsigned char *ptr;
@@ -238,7 +242,7 @@ static int http_handle_state_start_line(http_inspector_t *insp,
 			n = ptr - data;
 			if (http_inspect_ctx_common_add_line(c, data, n - 2))
 				goto err;
-			if (is_client) {
+			if (dir == PKT_DIR_C2S) {
 				if (http_parse_request_line(insp, c->line,
 						user))
 					goto err;
@@ -258,7 +262,7 @@ static int http_handle_state_start_line(http_inspector_t *insp,
 			c->state = HTTP_STATE_MSG_HDR;
 			n = 1;
 			c->line[--c->line_len] = '\0';
-			if (is_client) {
+			if (dir == PKT_DIR_C2S) {
 				if (http_parse_request_line(insp, c->line,
 						user))
 					goto err;
@@ -303,8 +307,8 @@ err:
        LWS            = [CRLF] 1*( SP | HT )
 */
 static int http_parse_header_field(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, char *hdr, void *user,
-		bool is_client)
+		struct http_inspect_ctx_common *c, int dir, char *hdr,
+		void *user)
 {
 	char *fv = strchr(hdr, ':');
 
@@ -317,15 +321,15 @@ static int http_parse_header_field(http_inspector_t *insp,
 	if (strcasecmp(hdr, "Content-Length") == 0)
 		c->body_len = strtoull(fv, NULL, 0);
 
-	if (is_client)
+	if (dir == PKT_DIR_C2S)
 		call_request_header_field_handler(insp, hdr, fv, user);
 
 	return 0;
 }
 
 static int http_handle_state_msg_hdr(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, const unsigned char *data,
-		int len, void *user, bool is_client)
+		struct http_inspect_ctx_common *c, int dir,
+		const unsigned char *data, int len, void *user)
 {
 	int n;
 	const unsigned char *ptr;
@@ -338,13 +342,13 @@ static int http_handle_state_msg_hdr(http_inspector_t *insp,
 			n = ptr - data;
 			if (n + c->line_len == 2) {
 header_body_delimiter:
-				if (is_client) {
+				if (dir == PKT_DIR_C2S) {
 					call_request_header_field_handler(insp,
 						NULL, NULL, user);
 				}
 				if (c->body_len == 0) {
 					http_inspect_ctx_common_init(c);
-					if (!is_client) {
+					if (dir == PKT_DIR_S2C) {
 						call_response_body_handler(insp,
 							NULL, 0, user);
 					}
@@ -371,8 +375,8 @@ header_body_delimiter:
 			}
 			if (http_inspect_ctx_common_add_line(c, data, n - 2))
 				goto err;
-			if (http_parse_header_field(insp, c, c->line,
-					user, is_client))
+			if (http_parse_header_field(insp, c, dir, c->line,
+					user))
 				goto err;
 			c->line_len = 0;
 			break;
@@ -411,7 +415,7 @@ header_body_delimiter:
 		c->line_len -= 2;
 		c->line[c->line_len] = '\0';
 		n = 0;
-		if (http_parse_header_field(insp, c, c->line, user, is_client))
+		if (http_parse_header_field(insp, c, dir, c->line, user))
 			goto err;
 		c->line_len = 0;
 		break;
@@ -426,22 +430,20 @@ err:
 
 /* return -1 on fatal, and callers should not call it again.
  * return 0 if all the data is consumed or bufferd. */
-static int __http_inspect_x_data(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, const unsigned char *data,
-		int len, void *user, bool is_client)
+static int __http_inspect_data(http_inspector_t *insp,
+		struct http_inspect_ctx_common *c, int dir,
+		const unsigned char *data, int len, void *user)
 {
 	int n;
 
 	switch (c->state) {
 	case HTTP_STATE_START_LINE:
-		n = http_handle_state_start_line(insp, c, data, len, user,
-				is_client);
+		n = http_handle_state_start_line(insp, c, dir, data, len, user);
 		if (n < 0)
 			goto err;
 		break;
 	case HTTP_STATE_MSG_HDR:
-		n = http_handle_state_msg_hdr(insp, c, data, len, user,
-				is_client);
+		n = http_handle_state_msg_hdr(insp, c, dir, data, len, user);
 		if (n < 0)
 			goto err;
 		break;
@@ -449,10 +451,10 @@ static int __http_inspect_x_data(http_inspector_t *insp,
 		assert(c->body_len > 0);
 		n = MIN(len, c->body_len);
 		c->body_len -= n;
-		if (!is_client)
+		if (dir == PKT_DIR_S2C)
 			call_response_body_handler(insp, data, len, user);
 		if (c->body_len == 0) {
-			if (!is_client)
+			if (dir == PKT_DIR_S2C)
 				call_response_body_handler(insp, NULL, 0, user);
 			http_inspect_ctx_common_init(c);
 		}
@@ -466,17 +468,15 @@ err:
 	return -1;
 }
 
-static int http_inspect_x_data(http_inspector_t *insp,
-		http_inspect_ctx_t *ctx, const unsigned char *data, int len,
-		void *user, bool is_client)
+int http_inspect_data(http_inspector_t *insp, http_inspect_ctx_t *ctx, int dir,
+		const unsigned char *data, int len, void *user)
 {
 	struct http_inspect_ctx_common *c;
 	int n;
 
-	c = is_client ? &ctx->clnt : &ctx->serv;
+	c = &ctx->common[dir];
 	while (len > 0) {
-		n = __http_inspect_x_data(insp, c, data, len, user,
-					  is_client);
+		n = __http_inspect_data(insp, c, dir, data, len, user);
 		if (n < 0)
 			return -1;
 		data += n;
@@ -484,25 +484,6 @@ static int http_inspect_x_data(http_inspector_t *insp,
 	}
 
 	return 0;
-}
-
-/*
-       HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
-       DIGIT          = <any US-ASCII digit "0".."9">
-*/
-int http_inspect_client_data(http_inspector_t *insp, http_inspect_ctx_t *ctx,
-		const unsigned char *data, int len, void *user)
-{
-	return http_inspect_x_data(insp, ctx, data, len, user, 1);
-}
-
-/*
-       Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
-*/
-int http_inspect_server_data(http_inspector_t *insp, http_inspect_ctx_t *ctx,
-		const unsigned char *data, int len, void *user)
-{
-	return http_inspect_x_data(insp, ctx, data, len, user, 0);
 }
 
 #ifdef TEST
@@ -568,14 +549,16 @@ int main(void)
 	c = http_inspect_ctx_alloc();
 	assert(c);
 
-	assert(http_inspect_client_data(insp, c, req, strlen(req), NULL) == 0);
-	assert(http_inspect_server_data(insp, c, res, strlen(res), NULL) == 0);
+	assert(http_inspect_data(insp, c, PKT_DIR_C2S, req, strlen(req),
+			NULL) == 0);
+	assert(http_inspect_data(insp, c, PKT_DIR_S2C, res, strlen(res),
+			NULL) == 0);
 	for (i = 0; i < strlen(req); i++) {
-		assert(http_inspect_client_data(insp, c, req + i, 1,
+		assert(http_inspect_data(insp, c, PKT_DIR_C2S, req + i, 1,
 				NULL) == 0);
 	}
 	for (i = 0; i < strlen(res); i++) {
-		assert(http_inspect_server_data(insp, c, res + i, 1,
+		assert(http_inspect_data(insp, c, PKT_DIR_S2C, res + i, 1,
 				&off) == 0);
 	}
 	http_inspector_free(insp);

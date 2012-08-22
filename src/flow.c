@@ -2,6 +2,7 @@
 #include "flow.h"
 #include "types.h"
 #include "buf.h"
+#include <stdbool.h>
 #include <assert.h>
 #include <time.h>
 
@@ -29,8 +30,7 @@ struct flow {
 	be16_t			sport;
 	be16_t			dport;
 	int			state;
-	struct buf		clnt;
-	struct buf		serv;
+	struct buf		buf[PKT_DIR_NUM];
 	struct flow_tag		*tag;
 	struct flow		*hash_next;
 	struct flow		**hash_pprev;
@@ -143,8 +143,8 @@ static void flow_free(struct flow *f)
 {
 	struct flow_tag *t;
 
-	buf_drain(&f->clnt);
-	buf_drain(&f->serv);
+	buf_drain(&f->buf[PKT_DIR_C2S]);
+	buf_drain(&f->buf[PKT_DIR_S2C]);
 	while ((t = f->tag)) {
 		f->tag = t->next;
 		t->free(t->data);
@@ -175,8 +175,8 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	f->sport = tcph->th_sport;
 	f->dport = tcph->th_dport;
 	f->state = FLOW_STATE_INIT;
-	buf_init(&f->clnt, 0);
-	buf_init(&f->serv, 0);
+	buf_init(&f->buf[PKT_DIR_C2S], 0);
+	buf_init(&f->buf[PKT_DIR_S2C], 0);
 	f->tag = NULL;
 	f->gc_pprev = NULL;
 	flow_gc_add(f);
@@ -189,7 +189,7 @@ err:
 	return NULL;
 }
 
-static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, bool *is_clnt,
+static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir,
 		bool *is_new)
 {
 	struct flow *f;
@@ -202,14 +202,14 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, bool *is_clnt,
 		if (ip->ip_src.s_addr == f->src &&
 		    ip->ip_dst.s_addr == f->dst &&
 		    tcph->th_sport == f->sport && tcph->th_dport == f->dport) {
-			*is_clnt = true;
+			*dir = PKT_DIR_C2S;
 			*is_new = false;
 			goto out;
 		}
 		if (ip->ip_dst.s_addr == f->src &&
 		    ip->ip_src.s_addr == f->dst &&
 		    tcph->th_dport == f->sport && tcph->th_sport == f->dport) {
-			*is_clnt = false;
+			*dir = PKT_DIR_S2C;
 			*is_new = false;
 			goto out;
 		}
@@ -243,7 +243,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, bool *is_clnt,
 	f->hash_next = l_hash_table[hash];
 	l_hash_table[hash] = f;
 	f->hash_pprev = &l_hash_table[hash];
-	*is_clnt = true;
+	*dir = PKT_DIR_C2S;
 	*is_new = true;
 out:
 	return f;
@@ -274,14 +274,15 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		void *user)
 {
 	struct flow *f;
-	bool is_clnt, is_new;
+	int dir;
+	bool is_new;
 
 	if (timercmp(ts, &l_time, >)) {
 		l_time = *ts;
 		flow_gc();
 	}
 
-	f = flow_get(ip, tcph, &is_clnt, &is_new);
+	f = flow_get(ip, tcph, &dir, &is_new);
 	if (!f)
 		goto err;
 
@@ -292,20 +293,20 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 	if (!is_new)
 		flow_gc_del(f);
 	if (tcph->th_flags & TH_SYN) {
-		if (is_clnt) {
+		if (dir == PKT_DIR_C2S) {
 			if (f->state == FLOW_STATE_INIT) {
-				f->clnt.seq = ntohl(tcph->th_seq) + 1;
+				f->buf[dir].seq = ntohl(tcph->th_seq) + 1;
 				f->state = FLOW_STATE_CLNT_SYN;
 			}
 		} else {
 			if ((f->state & FLOW_STATE_BOTH_SYN) ==
 					FLOW_STATE_CLNT_SYN) {
-				f->serv.seq = ntohl(tcph->th_seq) + 1;
+				f->buf[dir].seq = ntohl(tcph->th_seq) + 1;
 				f->state |= FLOW_STATE_SERV_SYN;
 			}
 		}
 	} else if (tcph->th_flags & TH_FIN) {
-		if (is_clnt) {
+		if (dir == PKT_DIR_C2S) {
 			f->state |= FLOW_STATE_CLNT_FIN;
 		} else {
 			f->state |= FLOW_STATE_SERV_FIN;
@@ -331,15 +332,15 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 
 	if ((f->state & FLOW_STATE_ACK) && len > 0) {
 		uint32_t seq = ntohl(tcph->th_seq);
-		struct buf *buf = is_clnt ? &f->clnt : &f->serv;
+		struct buf *buf = &f->buf[dir];
 
 		if (seq == buf->seq) {
 			struct mb *m;
 
-			h(f, is_clnt, &l_time, data, len, user);
+			h(f, dir, &l_time, data, len, user);
 			buf_drain_to(buf, seq + len);
 			while ((m = buf_del(buf))) {
-				h(f, is_clnt, &l_time, m->data, m->len, user);
+				h(f, dir, &l_time, m->data, m->len, user);
 				mb_free(m);
 			}
 		} else if (buf_add(buf, seq, data, len)) {

@@ -25,9 +25,7 @@ int http_inspector_add_response_body_handler(http_inspector_t *insp,
 typedef struct http_inspect_ctx http_inspect_ctx_t;
 http_inspect_ctx_t *http_inspect_ctx_alloc(void);
 void http_inspect_ctx_free(http_inspect_ctx_t *ctx);
-int http_inspect_client_data(http_inspector_t *insp, http_inspect_ctx_t *ctx,
-		const unsigned char *data, int len, void *user);
-int http_inspect_server_data(http_inspector_t *insp, http_inspect_ctx_t *ctx,
+int http_inspect_data(http_inspector_t *insp, http_inspect_ctx_t *ctx, int dir,
 		const unsigned char *data, int len, void *user);
 
 #endif /* __HTTP_H */

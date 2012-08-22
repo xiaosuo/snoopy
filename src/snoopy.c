@@ -140,12 +140,11 @@ struct flow_user {
 	struct ip		*ip;
 };
 
-static void stream_inspect(flow_t *f, bool is_clnt, const struct timeval *ts,
+static void stream_inspect(flow_t *f, int dir, const struct timeval *ts,
 		const unsigned char *data, int len, void *user)
 {
 	struct flow_context *fc;
 	struct flow_user *fu = user;
-	int r;
 	struct http_user hu;
 
 	fc = flow_get_tag(f, FLOW_TAG_ID);
@@ -166,13 +165,8 @@ static void stream_inspect(flow_t *f, bool is_clnt, const struct timeval *ts,
 	hu.ts = ts;
 	if (!fc->http_ctx && !(fc->http_ctx = http_inspect_ctx_alloc()))
 		goto stop_inspect;
-	if (is_clnt)
-		r = http_inspect_client_data(fu->sc->insp, fc->http_ctx,
-				data, len, &hu);
-	else
-		r = http_inspect_server_data(fu->sc->insp, fc->http_ctx,
-				data, len, &hu);
-	if (r) {
+	if (http_inspect_data(fu->sc->insp, fc->http_ctx, dir, data, len,
+			&hu)) {
 stop_inspect:
 		flow_context_reset(fc);
 		fc->stop_inspect = true;
