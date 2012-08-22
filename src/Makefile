@@ -1,4 +1,4 @@
-CFLAGS += -Wall -O2
+CFLAGS += -Wall -O2 -D_GNU_SOURCE
 LDFLAGS += -lpcap
 TARGETS := snoopy
 OBJS := $(patsubst %.c,%.o,$(wildcard *.c))

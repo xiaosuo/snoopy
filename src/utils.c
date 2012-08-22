@@ -79,7 +79,8 @@ err:
 	return -1;
 }
 
-void *xmemmem(const void *haystack, size_t haystacklen,
+#ifndef __GLIBC__
+void *memmem(const void *haystack, size_t haystacklen,
 		const void *needle, size_t needlelen)
 {
 	assert(needlelen > 0);
@@ -93,6 +94,7 @@ void *xmemmem(const void *haystack, size_t haystacklen,
 
 	return NULL;
 }
+#endif
 
 #ifdef TEST
 #include <assert.h>

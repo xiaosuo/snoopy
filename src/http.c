@@ -235,7 +235,7 @@ static int http_handle_state_start_line(http_inspector_t *insp,
 
 	switch (c->minor_state) {
 	case MINOR_STATE_INIT:
-		ptr = xmemmem(data, len, "\r\n", 2);
+		ptr = memmem(data, len, "\r\n", 2);
 		if (ptr) {
 			ptr += 2;
 			c->state = HTTP_STATE_MSG_HDR;
@@ -336,7 +336,7 @@ static int http_handle_state_msg_hdr(http_inspector_t *insp,
 
 	switch (c->minor_state) {
 	case MINOR_STATE_INIT:
-		ptr = xmemmem(data, len, "\r\n", 2);
+		ptr = memmem(data, len, "\r\n", 2);
 		if (ptr) {
 			ptr += 2;
 			n = ptr - data;
