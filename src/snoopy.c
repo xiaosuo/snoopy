@@ -166,7 +166,7 @@ static void stream_inspect(flow_t *f, int dir, const struct timeval *ts,
 	if (!fc->http_ctx && !(fc->http_ctx = http_inspect_ctx_alloc()))
 		goto stop_inspect;
 	if (http_inspect_data(fu->sc->insp, fc->http_ctx, dir, data, len,
-			&hu)) {
+			&hu) || fc->stop_inspect) {
 stop_inspect:
 		flow_context_reset(fc);
 		fc->stop_inspect = true;
@@ -365,7 +365,6 @@ static int log_keyword(const char *k, void *user)
 	if (r < 0)
 		return r;
 	if (fc->snoopy->is_lazy) {
-		flow_context_reset(fc);
 		fc->stop_inspect = true;
 		return 1;
 	}
@@ -389,7 +388,7 @@ static void inspect_body(const unsigned char *data, int len, void *user)
 		if (fc->sch_ctx)
 			patn_sch_ctx_reset(fc->sch_ctx);
 	} else {
-		if (r->host && r->path) {
+		if (r->host && r->path && !fc->stop_inspect) {
 			struct patn_user pn = {
 				.ts	= hu->ts,
 				.ip	= hu->ip,
