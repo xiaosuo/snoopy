@@ -2,7 +2,6 @@
 #include "flow.h"
 #include "types.h"
 #include "buf.h"
-#include <stdbool.h>
 #include <assert.h>
 #include <time.h>
 
@@ -182,7 +181,6 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	buf_init(&f->buf[PKT_DIR_S2C], 0);
 	f->tag = NULL;
 	f->gc_pprev = NULL;
-	flow_gc_add(f);
 	++l_flow_cnt;
 
 	return f;
@@ -190,8 +188,7 @@ err:
 	return NULL;
 }
 
-static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir,
-		bool *is_new)
+static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 {
 	struct flow *f;
 	uint32_t hash = flow_hash(ip->ip_src.s_addr, ip->ip_dst.s_addr,
@@ -204,14 +201,12 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir,
 		    ip->ip_dst.s_addr == f->dst &&
 		    tcph->th_sport == f->sport && tcph->th_dport == f->dport) {
 			*dir = PKT_DIR_C2S;
-			*is_new = false;
 			goto out;
 		}
 		if (ip->ip_dst.s_addr == f->src &&
 		    ip->ip_src.s_addr == f->dst &&
 		    tcph->th_dport == f->sport && tcph->th_sport == f->dport) {
 			*dir = PKT_DIR_S2C;
-			*is_new = false;
 			goto out;
 		}
 	}
@@ -245,7 +240,6 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir,
 	l_hash_table[hash] = f;
 	f->hash_pprev = &l_hash_table[hash];
 	*dir = PKT_DIR_C2S;
-	*is_new = true;
 out:
 	return f;
 err:
@@ -276,14 +270,13 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 {
 	struct flow *f;
 	int dir;
-	bool is_new;
 
 	if (timercmp(ts, &l_time, >)) {
 		l_time = *ts;
 		flow_gc();
 	}
 
-	f = flow_get(ip, tcph, &dir, &is_new);
+	f = flow_get(ip, tcph, &dir);
 	if (!f)
 		goto err;
 
@@ -291,8 +284,7 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		flow_free(f);
 		goto out;
 	}
-	if (!is_new)
-		flow_gc_del(f);
+	flow_gc_del(f);
 	if (tcph->th_flags & TH_SYN) {
 		if (dir == PKT_DIR_C2S) {
 			if (f->state == FLOW_STATE_INIT) {
@@ -320,8 +312,7 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		if ((f->state & FLOW_STATE_BOTH_SYN) == FLOW_STATE_BOTH_SYN)
 			f->state |= FLOW_STATE_ACK;
 	}
-	if (!is_new)
-		flow_gc_add(f);
+	flow_gc_add(f);
 
 	if ((f->state & FLOW_STATE_ACK) && len > 0) {
 		uint32_t seq = ntohl(tcph->th_seq);
