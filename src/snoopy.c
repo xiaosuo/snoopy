@@ -209,8 +209,8 @@ struct pppoe_ses_hdr {
 	be16_t			proto;
 } __attribute__((packed));
 
-void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
-		      const u_char *bytes)
+static void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
+		const u_char *bytes)
 {
 	struct ether_header *eth;
 	struct ip *iph;
