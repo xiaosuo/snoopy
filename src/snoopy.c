@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <pcap/pcap.h>
+#include <pcap/sll.h>
 #include <net/ethernet.h>
 #ifndef __APPLE__
 #include <net/ppp_defs.h>
@@ -307,20 +308,39 @@ static void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 		const u_char *bytes)
 {
 	struct ether_header *eth;
-	struct snoopy_context *sc = (struct snoopy_context *)user;
 
-	if (h->caplen != h->len) {
-		fprintf(stderr, "truncated packet: %u(%u)\n", h->len,
-			h->caplen);
-		exit(EXIT_FAILURE);
+#define CHECK_CAPLEN \
+	if (h->caplen != h->len) { \
+		fprintf(stderr, "truncated packet: %u(%u)\n", h->len, \
+			h->caplen); \
+		exit(EXIT_FAILURE); \
 	}
+	CHECK_CAPLEN;
 
 	/* ethernet */
 	if (h->len < sizeof(*eth))
 		goto err;
 	eth = (struct ether_header *)bytes;
-	ethernet_demux(sc, &h->ts, bytes + sizeof(*eth), h->len - sizeof(*eth),
+	ethernet_demux((struct snoopy_context *)user, &h->ts,
+			bytes + sizeof(*eth), h->len - sizeof(*eth),
 			ntohs(eth->ether_type));
+err:
+	return;
+}
+
+static void linux_sll_handler(u_char *user, const struct pcap_pkthdr *h,
+		const u_char *bytes)
+{
+	struct sll_header *sll;
+
+	CHECK_CAPLEN;
+
+	if (h->len < sizeof(*sll))
+		goto err;
+	sll = (struct sll_header *)bytes;
+	ethernet_demux((struct snoopy_context *)user, &h->ts,
+			bytes + sizeof(*sll), h->len - sizeof(*sll),
+			ntohs(sll->sll_protocol));
 err:
 	return;
 }
@@ -538,6 +558,9 @@ int main(int argc, char *argv[])
 	switch (pcap_datalink(p)) {
 	case DLT_EN10MB:
 		handler = ethernet_handler;
+		break;
+	case DLT_LINUX_SLL:
+		handler = linux_sll_handler;
 		break;
 	default:
 		die("unsupported datalnk: %s\n",
