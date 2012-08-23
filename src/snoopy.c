@@ -301,6 +301,9 @@ again:
 	len -= hl;
 
 	/* flow */
+	/* skip pure ACKs as they are useless here */
+	if ((tcph->th_flags & (TH_FIN | TH_SYN | TH_RST)) == 0 && len == 0)
+		goto err;
 	fu.sc = sc;
 	fu.ip = iph;
 	flow_inspect(&h->ts, iph, tcph, bytes, len, stream_inspect, &fu);
