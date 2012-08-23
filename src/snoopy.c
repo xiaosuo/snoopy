@@ -209,57 +209,13 @@ struct pppoe_ses_hdr {
 	be16_t			proto;
 } __attribute__((packed));
 
-static void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
-		const u_char *bytes)
+static void ip_handler(struct snoopy_context *sc, const struct timeval *ts,
+		const uint8_t *bytes, int len)
 {
-	struct ether_header *eth;
 	struct ip *iph;
 	struct tcphdr *tcph;
-	int len, hl, proto;
-	struct snoopy_context *sc = (struct snoopy_context *)user;
+	int hl;
 	struct flow_user fu;
-	struct vlan_hdr *vlan;
-	struct pppoe_ses_hdr *pppoe_ses;
-
-	if (h->caplen != h->len) {
-		fprintf(stderr, "truncated packet: %u(%u)\n", h->len,
-			h->caplen);
-		exit(EXIT_FAILURE);
-	}
-	len = h->len;
-
-	/* ethernet */
-	if (len < sizeof(*eth))
-		goto err;
-	eth = (struct ether_header *)bytes;
-	bytes += sizeof(*eth);
-	len -= sizeof(*eth);
-	proto = ntohs(eth->ether_type);
-again:
-	switch (proto) {
-	case ETHERTYPE_IP:
-		break;
-	case ETHERTYPE_VLAN:
-		if (len < sizeof(*vlan))
-			goto err;
-		vlan = (struct vlan_hdr *)bytes;
-		bytes += sizeof(*vlan);
-		len -= sizeof(*vlan);
-		proto = ntohs(vlan->encapsulated_proto);
-		goto again;
-		break;
-	case ETHERTYPE_PPPOE:
-		if (len < sizeof(*pppoe_ses))
-			goto err;
-		pppoe_ses = (struct pppoe_ses_hdr *)bytes;
-		bytes += sizeof(*pppoe_ses);
-		len -= sizeof(*pppoe_ses);
-		if (ntohs(pppoe_ses->proto) != PPP_IP)
-			goto err;
-		break;
-	default:
-		goto err;
-	}
 
 	/* ip */
 	if (len < sizeof(*iph))
@@ -306,7 +262,65 @@ again:
 		goto err;
 	fu.sc = sc;
 	fu.ip = iph;
-	flow_inspect(&h->ts, iph, tcph, bytes, len, stream_inspect, &fu);
+	flow_inspect(ts, iph, tcph, bytes, len, stream_inspect, &fu);
+err:
+	return;
+}
+
+static void ethernet_demux(struct snoopy_context *sc,
+		const struct timeval *ts, const uint8_t *bytes, int len,
+		int proto)
+{
+	struct vlan_hdr *vlan;
+	struct pppoe_ses_hdr *pppoe_ses;
+again:
+	switch (proto) {
+	case ETHERTYPE_IP:
+		break;
+	case ETHERTYPE_VLAN:
+		if (len < sizeof(*vlan))
+			goto err;
+		vlan = (struct vlan_hdr *)bytes;
+		bytes += sizeof(*vlan);
+		len -= sizeof(*vlan);
+		proto = ntohs(vlan->encapsulated_proto);
+		goto again;
+		break;
+	case ETHERTYPE_PPPOE:
+		if (len < sizeof(*pppoe_ses))
+			goto err;
+		pppoe_ses = (struct pppoe_ses_hdr *)bytes;
+		bytes += sizeof(*pppoe_ses);
+		len -= sizeof(*pppoe_ses);
+		if (ntohs(pppoe_ses->proto) != PPP_IP)
+			goto err;
+		break;
+	default:
+		goto err;
+	}
+	ip_handler(sc, ts, bytes, len);
+err:
+	return;
+}
+
+static void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
+		const u_char *bytes)
+{
+	struct ether_header *eth;
+	struct snoopy_context *sc = (struct snoopy_context *)user;
+
+	if (h->caplen != h->len) {
+		fprintf(stderr, "truncated packet: %u(%u)\n", h->len,
+			h->caplen);
+		exit(EXIT_FAILURE);
+	}
+
+	/* ethernet */
+	if (h->len < sizeof(*eth))
+		goto err;
+	eth = (struct ether_header *)bytes;
+	ethernet_demux(sc, &h->ts, bytes + sizeof(*eth), h->len - sizeof(*eth),
+			ntohs(eth->ether_type));
 err:
 	return;
 }
