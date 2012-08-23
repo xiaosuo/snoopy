@@ -238,6 +238,8 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 		goto err;
 	f->hash_next = l_hash_table[hash];
 	l_hash_table[hash] = f;
+	if (f->hash_next)
+		f->hash_next->hash_pprev = &f->hash_next;
 	f->hash_pprev = &l_hash_table[hash];
 	*dir = PKT_DIR_C2S;
 out:
