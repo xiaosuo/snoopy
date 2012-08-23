@@ -219,17 +219,19 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 	 * connection randomly to free space */
 	while (l_flow_cnt >= FLOW_NR_MAX) {
 		int bucket;
+		struct flow *df = NULL;
 
 		if (--early_drop_limit < 0)
 			goto err;
 
 		bucket = random() & (FLOW_NR_MAX - 1);
-		/* TODO: tail drop */
 		for (f = l_hash_table[bucket]; f; f = f->hash_next) {
-			if (f->state < FLOW_STATE_ACK) {
-				flow_free(f);
-				break;
-			}
+			if (f->state < FLOW_STATE_ACK)
+				df = f;
+		}
+		if (df) {
+			flow_free(f);
+			break;
 		}
 	}
 
