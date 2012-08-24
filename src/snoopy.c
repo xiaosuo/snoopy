@@ -479,9 +479,15 @@ err:
 	return;
 }
 
+static pcap_t *p;
+
+static void handle_sigint(int signo)
+{
+	pcap_breakloop(p);
+}
+
 int main(int argc, char *argv[])
 {
-	pcap_t *p;
 	int o;
 	const char *nic = NULL;
 	const char *file = NULL;
@@ -625,6 +631,8 @@ int main(int argc, char *argv[])
 	ctx.patn_list = patn_list_load(key_fn);
 	if (!ctx.patn_list)
 		die("failed to load keywords in %s\n", key_fn);
+	if (signal(SIGINT, handle_sigint))
+		die("failed to install the SIGINT handler\n");
 	if (background && daemon(0, 0))
 		die("failed to become a background daemon\n");
 	if (pcap_loop(p, -1, handler, (u_char *)&ctx) == -1)
