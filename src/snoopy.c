@@ -579,7 +579,7 @@ int main(int argc, char *argv[])
 		die("failed to allocate a http inspector\n");
 	if (http_inspector_add_request_line_handler(ctx.insp, save_path))
 		die("failed to add the request line handler\n");
-	if (http_inspector_add_request_header_field_handler(ctx.insp,
+	if (http_inspector_add_header_field_handler(ctx.insp, PKT_DIR_C2S,
 			save_host))
 		die("failed to add the request header field handler\n");
 	if (http_inspector_add_response_body_handler(ctx.insp, inspect_body))

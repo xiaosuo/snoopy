@@ -23,7 +23,7 @@ struct body_handler_iter {
 
 struct http_inspector {
 	struct request_line_handler_iter	*request_line;
-	struct header_field_handler_iter	*request_header_field;
+	struct header_field_handler_iter	*header_field[PKT_DIR_NUM];
 	struct body_handler_iter		*response_body;
 };
 
@@ -37,15 +37,18 @@ void http_inspector_free(http_inspector_t *insp)
 	struct request_line_handler_iter *rq_line;
 	struct header_field_handler_iter *hdr_fild;
 	struct body_handler_iter *body;
+	int dir;
 
 	while ((rq_line = insp->request_line)) {
 		insp->request_line = rq_line->next;
 		free(rq_line);
 	}
 
-	while ((hdr_fild = insp->request_header_field)) {
-		insp->request_header_field = hdr_fild->next;
-		free(hdr_fild);
+	for (dir = 0; dir < PKT_DIR_NUM; dir++) {
+		while ((hdr_fild = insp->header_field[dir])) {
+			insp->header_field[dir] = hdr_fild->next;
+			free(hdr_fild);
+		}
 	}
 
 	while ((body = insp->response_body)) {
@@ -70,7 +73,7 @@ int http_inspector_add_request_line_handler(http_inspector_t *insp,
 	return 0;
 }
 
-int http_inspector_add_request_header_field_handler(http_inspector_t *insp,
+int http_inspector_add_header_field_handler(http_inspector_t *insp, int dir,
 		http_header_field_handler h)
 {
 	struct header_field_handler_iter *i = malloc(sizeof(*i));
@@ -78,8 +81,8 @@ int http_inspector_add_request_header_field_handler(http_inspector_t *insp,
 	if (!i)
 		return -1;
 	i->handler = h;
-	i->next = insp->request_header_field;
-	insp->request_header_field = i;
+	i->next = insp->header_field[dir];
+	insp->header_field[dir] = i;
 
 	return 0;
 }
@@ -108,12 +111,12 @@ static void call_request_line_handler(http_inspector_t *insp,
 		i->handler(method, path, http_version, user);
 }
 
-static void call_request_header_field_handler(http_inspector_t *insp,
+static void call_header_field_handler(http_inspector_t *insp, int dir,
 		const char *name, const char *value, void *user)
 {
 	struct header_field_handler_iter *i;
 
-	for (i = insp->request_header_field; i; i = i->next)
+	for (i = insp->header_field[dir]; i; i = i->next)
 		i->handler(name, value, user);
 }
 
@@ -321,8 +324,7 @@ static int http_parse_header_field(http_inspector_t *insp,
 	if (strcasecmp(hdr, "Content-Length") == 0)
 		c->body_len = strtoull(fv, NULL, 0);
 
-	if (dir == PKT_DIR_C2S)
-		call_request_header_field_handler(insp, hdr, fv, user);
+	call_header_field_handler(insp, dir, hdr, fv, user);
 
 	return 0;
 }
@@ -342,10 +344,8 @@ static int http_handle_state_msg_hdr(http_inspector_t *insp,
 			n = ptr - data;
 			if (n + c->line_len == 2) {
 header_body_delimiter:
-				if (dir == PKT_DIR_C2S) {
-					call_request_header_field_handler(insp,
+				call_header_field_handler(insp, dir,
 						NULL, NULL, user);
-				}
 				if (c->body_len == 0) {
 					http_inspect_ctx_common_init(c);
 					if (dir == PKT_DIR_S2C) {
@@ -542,7 +542,7 @@ int main(void)
 	insp = http_inspector_alloc();
 	assert(insp);
 	assert(http_inspector_add_request_line_handler(insp, print_path) == 0);
-	assert(http_inspector_add_request_header_field_handler(insp,
+	assert(http_inspector_add_header_field_handler(insp, PKT_DIR_C2S,
 			print_hdr) == 0);
 	assert(http_inspector_add_response_body_handler(insp, print_body) == 0);
 
