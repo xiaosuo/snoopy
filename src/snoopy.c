@@ -50,6 +50,7 @@ do { \
 struct http_req {
 	char		*path;
 	char		*host;
+	bool		is_non_text_res;
 	struct http_req	*next;
 };
 
@@ -384,6 +385,34 @@ err:
 	return;
 }
 
+static void parse_res_hdr_fild(const char *name, const char *value, void *user)
+{
+	struct http_user *hu = user;
+	struct flow_context *fc = hu->fc;
+	struct http_req *r;
+
+	if (!name || !(r = fc->req_head))
+		goto err;
+	if (strcasecmp(name, "Content-Type") == 0) {
+		/*
+		 * media-type     = type "/" subtype *( ";" parameter )
+		 * type           = token
+		 * subtype        = token
+		 * parameter               = attribute "=" value
+		 * attribute               = token
+		 * value                   = token | quoted-string
+		 */
+		/*
+		 * The type, subtype, and parameter attribute names are case-
+		 * insensitive.
+		 */
+		if (strncasecmp(value, "text/", 5) != 0)
+			r->is_non_text_res = true;
+	}
+err:
+	return;
+}
+
 struct patn_user {
 	const struct timeval	*ts;
 	struct ip		*ip;
@@ -425,7 +454,8 @@ static void inspect_body(const unsigned char *data, int len, void *user)
 		if (fc->sch_ctx)
 			patn_sch_ctx_reset(fc->sch_ctx);
 	} else {
-		if (r->host && r->path && !fc->stop_inspect) {
+		if (r->host && r->path && !fc->stop_inspect &&
+				!r->is_non_text_res) {
 			struct patn_user pn = {
 				.ts	= hu->ts,
 				.ip	= hu->ip,
@@ -582,6 +612,9 @@ int main(int argc, char *argv[])
 	if (http_inspector_add_header_field_handler(ctx.insp, PKT_DIR_C2S,
 			save_host))
 		die("failed to add the request header field handler\n");
+	if (http_inspector_add_header_field_handler(ctx.insp, PKT_DIR_S2C,
+			parse_res_hdr_fild))
+		die("failed to add the response header field handler\n");
 	if (http_inspector_add_response_body_handler(ctx.insp, inspect_body))
 		die("failed to add the response body handler\n");
 	ctx.patn_list = patn_list_load(key_fn);
