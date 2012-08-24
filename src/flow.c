@@ -50,7 +50,7 @@ static struct flow *l_gc_comp_head = NULL;
 static struct flow **l_gc_comp_ptail = &l_gc_comp_head;
 
 static struct flow **l_hash_table = NULL;
-static int l_flow_cnt = 0;
+int g_flow_cnt = 0;
 
 /* this is used to avoid clock rollback */
 static struct timeval l_time = { 0 };
@@ -157,7 +157,7 @@ static void flow_free(struct flow *f)
 		f->hash_next->hash_pprev = f->hash_pprev;
 	flow_gc_del(f);
 	free(f);
-	--l_flow_cnt;
+	--g_flow_cnt;
 }
 
 static inline uint32_t flow_hash(be32_t src, be32_t dst, be16_t sport,
@@ -181,7 +181,7 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	buf_init(&f->buf[PKT_DIR_S2C], 0);
 	f->tag = NULL;
 	f->gc_pprev = NULL;
-	++l_flow_cnt;
+	++g_flow_cnt;
 
 	return f;
 err:
@@ -217,7 +217,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 
 	/* the flow table is full, so we need to drop some incomplete
 	 * connection randomly to free space */
-	while (l_flow_cnt >= FLOW_NR_MAX) {
+	while (g_flow_cnt >= FLOW_NR_MAX) {
 		int bucket;
 		struct flow *df = NULL;
 
