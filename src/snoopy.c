@@ -30,6 +30,7 @@ static void usage(FILE *out)
 {
 	fputs("Usage: snoopy [options] pcap-program\n", out);
 	fputs("Options:\n", out);
+	fputs("  -a       inspect all contents\n", out);
 	fputs("  -b       run as a background daemon\n", out);
 	fputs("  -h       show this message\n", out);
 	fputs("  -i NIC   specify the NIC interface\n", out);
@@ -71,6 +72,7 @@ struct snoopy_context {
 	http_inspector_t	*insp;
 	patn_list_t		*patn_list;
 	bool			is_lazy;
+	bool			inspect_all;
 };
 
 struct flow_context {
@@ -455,7 +457,7 @@ static void inspect_body(const unsigned char *data, int len, void *user)
 			patn_sch_ctx_reset(fc->sch_ctx);
 	} else {
 		if (r->host && r->path && !fc->stop_inspect &&
-				!r->is_non_text_res) {
+		    (fc->snoopy->inspect_all || !r->is_non_text_res)) {
 			struct patn_user pn = {
 				.ts	= hu->ts,
 				.ip	= hu->ip,
@@ -493,8 +495,11 @@ int main(int argc, char *argv[])
 	bool background = false;
 
 	/* parse the options */
-	while ((o = getopt(argc, argv, "bhi:k:l:r:s:zR:")) != -1) {
+	while ((o = getopt(argc, argv, "abhi:k:l:r:s:zR:")) != -1) {
 		switch (o) {
+		case 'a':
+			ctx.inspect_all = true;
+			break;
 		case 'b':
 			background = true;
 			break;
