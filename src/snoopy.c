@@ -646,8 +646,8 @@ int main(int argc, char *argv[])
 		if (pcap_stats(p, &st))
 			die("failed to obtain the statistics: %s\n",
 			    pcap_geterr(p));
-		printf("received: %u\n", st.ps_recv);
-		printf("dropped: %u\n", st.ps_drop);
+		printf("pcap-received: %u\n", st.ps_recv);
+		printf("pcap-dropped: %u\n", st.ps_drop);
 	}
 
 	/* close the pcap handler */
