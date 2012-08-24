@@ -18,7 +18,7 @@ for dir in $case_dir/*; do
 	log=$dir/log.log
 	tmp=`mktemp /tmp/snoopy.XXXXXX`
 	echo -n "Testing $dir ... "
-	./snoopy -r $pkt -R $rule -k $keyword -l $tmp
+	./snoopy -r $pkt -R $rule -k $keyword -l $tmp > /dev/null
 	[ $? -ne 0 ] && fail
 	if [ ! -e $log ]; then
 		echo "WARN"
