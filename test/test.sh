@@ -20,6 +20,12 @@ for dir in $case_dir/*; do
 	echo -n "Testing $dir ... "
 	./snoopy -r $pkt -R $rule -k $keyword -l $tmp
 	[ $? -ne 0 ] && fail
+	if [ ! -e $log ]; then
+		echo "WARN"
+		echo "$log doesn't exist"
+		echo "generated logs is saved as $tmp"
+		continue
+	fi
 	diff=`diff $log $tmp`
 	[ -z "$diff" ] || fail
 	echo "OK"
