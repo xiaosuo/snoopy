@@ -12,6 +12,7 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
 #include <limits.h>
 #include <pcap/pcap.h>
