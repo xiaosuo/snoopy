@@ -9,6 +9,7 @@
 #include "http.h"
 #include "snoopy.h"
 #include <assert.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -47,6 +48,19 @@ do { \
 	fprintf(stderr, fmt, ##args); \
 	goto err; \
 } while (0)
+
+static struct snoopy_stat {
+	uint64_t		pkts;
+	uint64_t		frags;
+	uint64_t		pure_acks;
+} snoopy_stat = { 0 };
+
+static void show_snoopy_stat(void)
+{
+	printf("packets: %" PRIu64 "\n", snoopy_stat.pkts);
+	printf("fragments: %" PRIu64 "\n", snoopy_stat.frags);
+	printf("pure ACKs: %" PRIu64 "\n", snoopy_stat.pure_acks);
+}
 
 struct http_req {
 	char		*path;
@@ -244,8 +258,10 @@ static void ip_handler(struct snoopy_context *sc, const struct timeval *ts,
 	if (iph->ip_p != IPPROTO_TCP)
 		goto err;
 	/* TODO: support IP defragment */
-	if (ntohs(iph->ip_off) & (IP_MF | IP_OFFMASK))
+	if (ntohs(iph->ip_off) & (IP_MF | IP_OFFMASK)) {
+		snoopy_stat.frags++;
 		goto err;
+	}
 	if (len < sizeof(*tcph))
 		goto err;
 	tcph = (struct tcphdr *)bytes;
@@ -262,8 +278,10 @@ static void ip_handler(struct snoopy_context *sc, const struct timeval *ts,
 
 	/* flow */
 	/* skip pure ACKs as they are useless here */
-	if ((tcph->th_flags & (TH_FIN | TH_SYN | TH_RST)) == 0 && len == 0)
+	if ((tcph->th_flags & (TH_FIN | TH_SYN | TH_RST)) == 0 && len == 0) {
+		snoopy_stat.pure_acks++;
 		goto err;
+	}
 	fu.sc = sc;
 	fu.ip = iph;
 	flow_inspect(ts, iph, tcph, bytes, len, stream_inspect, &fu);
@@ -311,6 +329,8 @@ static void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 		const u_char *bytes)
 {
 	struct ether_header *eth;
+
+	snoopy_stat.pkts++;
 
 #define CHECK_CAPLEN \
 	if (h->caplen != h->len) { \
@@ -479,11 +499,31 @@ err:
 	return;
 }
 
-static pcap_t *p;
+static pcap_t *p = NULL;
+static bool caught_sigint = false;
 
 static void handle_sigint(int signo)
 {
 	pcap_breakloop(p);
+	caught_sigint = 1;
+}
+
+static void handle_sigquit(int signo)
+{
+	pcap_breakloop(p);
+}
+
+static void show_pcap_stat(pcap_t *p)
+{
+	struct pcap_stat st;
+
+	if (pcap_stats(p, &st)) {
+		fprintf(stderr, "failed to obtain the statistics: %s\n",
+			pcap_geterr(p));
+		exit(EXIT_FAILURE);
+	}
+	printf("pcap-received: %u\n", st.ps_recv);
+	printf("pcap-dropped: %u\n", st.ps_drop);
 }
 
 int main(int argc, char *argv[])
@@ -631,24 +671,31 @@ int main(int argc, char *argv[])
 	ctx.patn_list = patn_list_load(key_fn);
 	if (!ctx.patn_list)
 		die("failed to load keywords in %s\n", key_fn);
-	if (signal(SIGINT, handle_sigint))
+	if (signal(SIGINT, handle_sigint) == SIG_ERR)
 		die("failed to install the SIGINT handler\n");
+	if (signal(SIGQUIT, handle_sigquit) == SIG_ERR)
+		die("failed to install the SIGQUIT handler\n");
+	if (signal(SIGTERM, handle_sigquit) == SIG_ERR)
+		die("failed to install the SIGTERM handler\n");
 	if (background && daemon(0, 0))
 		die("failed to become a background daemon\n");
-	if (pcap_loop(p, -1, handler, (u_char *)&ctx) == -1)
-		die("pcap_loop(3PCAP) exits with error: %s\n",
-		    pcap_geterr(p));
+	while (1) {
+		if (pcap_loop(p, -1, handler, (u_char *)&ctx) == -1)
+			die("pcap_loop(3PCAP) exits with error: %s\n",
+			    pcap_geterr(p));
+		if (!caught_sigint)
+			break;
+		caught_sigint = false;
+		if (nic)
+			show_pcap_stat(p);
+		show_snoopy_stat();
+		printf("flow count: %d\n", g_flow_cnt);
+	}
 
 	/* output the statistics if possible */
-	if (nic) {
-		struct pcap_stat st;
-
-		if (pcap_stats(p, &st))
-			die("failed to obtain the statistics: %s\n",
-			    pcap_geterr(p));
-		printf("pcap-received: %u\n", st.ps_recv);
-		printf("pcap-dropped: %u\n", st.ps_drop);
-	}
+	if (nic)
+		show_pcap_stat(p);
+	show_snoopy_stat();
 
 	/* close the pcap handler */
 	pcap_close(p);
