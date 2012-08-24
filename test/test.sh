@@ -10,8 +10,10 @@ fail()
 }
 
 for dir in $case_dir/*; do
+	[ -d $dir ] || continue
 	pkt=$dir/pkt.pcap
 	rule=$dir/rules.conf
+	[ -f $rule ] || rule=$case_dir/rules.conf
 	keyword=$dir/keywords.conf
 	log=$dir/log.log
 	tmp=`mktemp /tmp/snoopy.XXXXXX`
