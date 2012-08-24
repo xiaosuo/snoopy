@@ -39,6 +39,7 @@ static inline struct mb *buf_del(struct buf *b)
 		struct mb *m = b->first;
 
 		b->first = m->next;
+		b->seq = m->seq + m->len;
 		return m;
 	}
 
