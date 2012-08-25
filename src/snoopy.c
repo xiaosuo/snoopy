@@ -53,14 +53,12 @@ do { \
 static struct snoopy_stat {
 	uint64_t		pkts;
 	uint64_t		frags;
-	uint64_t		pure_acks;
 } snoopy_stat = { 0 };
 
 static void show_snoopy_stat(void)
 {
 	printf("packets: %" PRIu64 "\n", snoopy_stat.pkts);
 	printf("fragments: %" PRIu64 "\n", snoopy_stat.frags);
-	printf("pure ACKs: %" PRIu64 "\n", snoopy_stat.pure_acks);
 }
 
 struct http_req {
@@ -278,11 +276,6 @@ static void ip_handler(struct snoopy_context *sc, const struct timeval *ts,
 	len -= hl;
 
 	/* flow */
-	/* skip pure ACKs as they are useless here */
-	if ((tcph->th_flags & (TH_FIN | TH_SYN | TH_RST)) == 0 && len == 0) {
-		snoopy_stat.pure_acks++;
-		goto err;
-	}
 	fu.sc = sc;
 	fu.ip = iph;
 	flow_inspect(ts, iph, tcph, bytes, len, stream_inspect, &fu);
