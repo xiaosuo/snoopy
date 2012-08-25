@@ -2,6 +2,7 @@
 #include "flow.h"
 #include "types.h"
 #include "buf.h"
+#include "time.h"
 #include <assert.h>
 #include <time.h>
 
@@ -52,9 +53,6 @@ static struct flow **l_gc_comp_ptail = &l_gc_comp_head;
 static struct flow **l_hash_table = NULL;
 int g_flow_cnt = 0;
 
-/* this is used to avoid clock rollback */
-static struct timeval l_time = { 0 };
-
 int flow_add_tag(flow_t *f, int id, void *data, void (*free)(void *data))
 {
 	struct flow_tag *t = malloc(sizeof(*t));
@@ -96,16 +94,6 @@ void flow_del_tag(flow_t *f, int id)
 	}
 }
 
-int flow_init(void)
-{
-	l_hash_table = calloc(FLOW_NR_MAX, sizeof(*l_hash_table));
-	if (!l_hash_table)
-		return -1;
-	srandom(time(NULL));
-
-	return 0;
-}
-
 static void flow_gc_del(struct flow *f)
 {
 	if (!f->gc_pprev)
@@ -131,14 +119,14 @@ static void flow_gc_add(struct flow *f)
 		*(l_gc_incomp_ptail) = f;
 		f->gc_pprev = l_gc_incomp_ptail;
 		l_gc_incomp_ptail = &f->gc_next;
-		f->timeout.tv_sec = l_time.tv_sec + FLOW_GC_INCOMP_TIMEO;
+		f->timeout.tv_sec = g_time.tv_sec + FLOW_GC_INCOMP_TIMEO;
 	} else {
 		*(l_gc_comp_ptail) = f;
 		f->gc_pprev = l_gc_comp_ptail;
 		l_gc_comp_ptail = &f->gc_next;
-		f->timeout.tv_sec = l_time.tv_sec + FLOW_GC_COMP_TIMEO;
+		f->timeout.tv_sec = g_time.tv_sec + FLOW_GC_COMP_TIMEO;
 	}
-	f->timeout.tv_usec = l_time.tv_usec;
+	f->timeout.tv_usec = g_time.tv_usec;
 }
 
 static void flow_free(struct flow *f)
@@ -250,18 +238,18 @@ err:
 	return NULL;
 }
 
-static void flow_gc(void)
+static void flow_gc(const struct timeval *tv, void *user)
 {
 	struct flow *f;
 
 	while ((f = l_gc_incomp_head)) {
-		if (timercmp(&f->timeout, &l_time, >))
+		if (timercmp(&f->timeout, tv, >))
 			break;
 		flow_free(f);
 	}
 
 	while ((f = l_gc_comp_head)) {
-		if (timercmp(&f->timeout, &l_time, >))
+		if (timercmp(&f->timeout, tv, >))
 			break;
 		flow_free(f);
 	}
@@ -274,11 +262,6 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 {
 	struct flow *f;
 	int dir;
-
-	if (timercmp(ts, &l_time, >)) {
-		l_time = *ts;
-		flow_gc();
-	}
 
 	f = flow_get(ip, tcph, &dir);
 	if (!f)
@@ -334,10 +317,10 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		if (seq == buf->seq) {
 			struct mb *m;
 
-			h(f, dir, &l_time, data, len, user);
+			h(f, dir, &g_time, data, len, user);
 			buf_drain_to(buf, seq + len);
 			while ((m = buf_del(buf))) {
-				h(f, dir, &l_time, m->data, m->len, user);
+				h(f, dir, &g_time, m->data, m->len, user);
 				mb_free(m);
 			}
 		} else if (buf_add(buf, seq, data, len)) {
@@ -348,6 +331,22 @@ out:
 	return 0;
 err2:
 	flow_free(f);
+err:
+	return -1;
+}
+
+int flow_init(void)
+{
+	l_hash_table = calloc(FLOW_NR_MAX, sizeof(*l_hash_table));
+	if (!l_hash_table)
+		goto err;
+	if (time_register_update_handler(flow_gc, NULL))
+		goto err2;
+	srandom(time(NULL));
+
+	return 0;
+err2:
+	free(l_hash_table);
 err:
 	return -1;
 }

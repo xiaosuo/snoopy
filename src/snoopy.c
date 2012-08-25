@@ -8,6 +8,7 @@
 #include "log.h"
 #include "http.h"
 #include "snoopy.h"
+#include "time.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -320,20 +321,25 @@ err:
 	return;
 }
 
+static void check_pkthdr(const struct pcap_pkthdr *h)
+{
+	if (h->caplen != h->len) {
+		fprintf(stderr, "truncated packet: %u(%u)\n", h->len,
+			h->caplen);
+		exit(EXIT_FAILURE);
+	}
+
+	time_update(&h->ts);
+
+	snoopy_stat.pkts++;
+}
+
 static void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 		const u_char *bytes)
 {
 	struct ether_header *eth;
 
-	snoopy_stat.pkts++;
-
-#define CHECK_CAPLEN \
-	if (h->caplen != h->len) { \
-		fprintf(stderr, "truncated packet: %u(%u)\n", h->len, \
-			h->caplen); \
-		exit(EXIT_FAILURE); \
-	}
-	CHECK_CAPLEN;
+	check_pkthdr(h);
 
 	/* ethernet */
 	if (h->len < sizeof(*eth))
@@ -351,7 +357,7 @@ static void linux_sll_handler(u_char *user, const struct pcap_pkthdr *h,
 {
 	struct sll_header *sll;
 
-	CHECK_CAPLEN;
+	check_pkthdr(h);
 
 	if (h->len < sizeof(*sll))
 		goto err;
