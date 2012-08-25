@@ -6,11 +6,6 @@
 /* this value is copied from /proc/sys/net/ipv4/tcp_wmem */
 #define BUF_LIMIT	4194304
 
-#define SEQ_GT(s1, s2) ((int)((s1) - (s2)) > 0)
-#define SEQ_LT(s1, s2) ((int)((s1) - (s2)) < 0)
-#define SEQ_GE(s1, s2) ((int)((s1) - (s2)) >= 0)
-#define SEQ_LE(s1, s2) ((int)((s1) - (s2)) <= 0)
-
 static struct mb *mb_alloc(uint32_t seq, const unsigned char *data,
 		uint32_t len)
 {

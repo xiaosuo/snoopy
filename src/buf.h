@@ -5,6 +5,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define SEQ_GT(s1, s2) ((int)((s1) - (s2)) > 0)
+#define SEQ_LT(s1, s2) ((int)((s1) - (s2)) < 0)
+#define SEQ_GE(s1, s2) ((int)((s1) - (s2)) >= 0)
+#define SEQ_LE(s1, s2) ((int)((s1) - (s2)) <= 0)
+
 struct mb {
 	unsigned char	*head;
 	unsigned char	*data;

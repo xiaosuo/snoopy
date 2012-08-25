@@ -318,6 +318,15 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 	}
 	flow_gc_add(f);
 
+	if (tcph->th_flags & TH_ACK) {
+		/* Loss of synchronization:
+		 * Some segments received by ends are lost for us, and we
+		 * can't recover the corresponding connections in any way, so
+		 * we have to drop them. */
+		if (SEQ_GT(ntohl(tcph->th_ack), f->buf[!dir].seq))
+			goto err2;
+	}
+
 	if ((f->state & FLOW_STATE_ACK) && len > 0) {
 		uint32_t seq = ntohl(tcph->th_seq);
 		struct buf *buf = &f->buf[dir];
@@ -337,6 +346,8 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 	}
 out:
 	return 0;
+err2:
+	flow_free(f);
 err:
 	return -1;
 }
