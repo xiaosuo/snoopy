@@ -689,6 +689,7 @@ int main(int argc, char *argv[])
 		if (!caught_sigint)
 			break;
 		caught_sigint = false;
+		fputs("\n", stdout);
 		if (nic)
 			show_pcap_stat(p);
 		show_snoopy_stat();
@@ -696,6 +697,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* output the statistics if possible */
+	fputs("\n", stdout);
 	if (nic)
 		show_pcap_stat(p);
 	show_snoopy_stat();
