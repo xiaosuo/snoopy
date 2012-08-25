@@ -38,6 +38,7 @@ static void usage(FILE *out)
 	fputs("  -i NIC   specify the NIC interface\n", out);
 	fputs("  -k FN    specify the keyword file\n", out);
 	fputs("  -l FN    specify the log file\n", out);
+	fputs("  -m SZ    specify the pcap buffer size to SZ MB\n", out);
 	fputs("  -r FILE  specify the pcap file\n", out);
 	fputs("  -s LEN   specify the snap length\n", out);
 	fputs("  -R FN    specify the rule file\n", out);
@@ -533,9 +534,10 @@ int main(int argc, char *argv[])
 	const char *key_fn = SNOOPY_KEY_FN;
 	const char *log_fn = SNOOPY_LOG_FN;
 	bool background = false;
+	int buf_size = 0;
 
 	/* parse the options */
-	while ((o = getopt(argc, argv, "abhi:k:l:r:s:zR:")) != -1) {
+	while ((o = getopt(argc, argv, "abhi:k:l:m:r:s:zR:")) != -1) {
 		switch (o) {
 		case 'a':
 			ctx.inspect_all = true;
@@ -557,6 +559,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'l':
 			log_fn = optarg;
+			break;
+		case 'm':
+			buf_size = atoi(optarg);
 			break;
 		case 'r':
 			if (file || nic)
@@ -594,11 +599,15 @@ int main(int argc, char *argv[])
 			printf("determined snap length: %d\n", snap_len);
 		}
 		err_buf[0] = '\0';
-		p = pcap_open_live(nic, snap_len, 1, 1, err_buf);
+		p = pcap_create(nic, err_buf);
 		if (!p)
 			die("failed to open %s: %s\n", nic, err_buf);
-		if (err_buf[0] != '\0')
-			printf("warning: %s\n", err_buf);
+		pcap_set_snaplen(p, snap_len);
+		pcap_set_promisc(p, 1);
+		pcap_set_timeout(p, 1);
+		pcap_set_buffer_size(p, buf_size * 1024 * 1024);
+		if (pcap_activate(p))
+			die("failed to activate the pcap handler\n");
 	} else {
 		p = pcap_open_offline(file, err_buf);
 		if (!p)
