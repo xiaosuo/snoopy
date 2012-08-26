@@ -17,6 +17,12 @@ enum {
 	FLOW_FLAG_ACK		= 16,
 };
 
+enum {
+	FLOW_STATE_INCOMP,
+	FLOW_STATE_COMP,
+	FLOW_STATE_NUM,
+};
+
 struct flow_tag {
 	int			id;
 	void			*data;
@@ -39,19 +45,36 @@ struct flow {
 	struct timeval		timeout;
 };
 
-#define FLOW_GC_INCOMP_TIMEO	30
-#define FLOW_GC_COMP_TIMEO	300
 #define FLOW_NR_MAX		(1 << 20)
 #define FLOW_EARLY_DROP_LIMIT	10
 
-static struct flow *l_gc_incomp_head = NULL;
-static struct flow **l_gc_incomp_ptail = &l_gc_incomp_head;
-
-static struct flow *l_gc_comp_head = NULL;
-static struct flow **l_gc_comp_ptail = &l_gc_comp_head;
+struct flow_gc_head {
+	struct flow	*head;
+	struct flow	**ptail;
+	time_t		timeout;
+} flow_gc_head[FLOW_STATE_NUM] = {
+	[FLOW_STATE_INCOMP] = {
+		.ptail		= &flow_gc_head[FLOW_STATE_INCOMP].head,
+		.timeout	= 30,
+	},
+	[FLOW_STATE_COMP] = {
+		.ptail		= &flow_gc_head[FLOW_STATE_COMP].head,
+		.timeout	= 300,
+	},
+};
 
 static struct flow **l_hash_table = NULL;
 int g_flow_cnt = 0;
+
+static inline int flow_state(struct flow *f)
+{
+	int flags = f->flags;
+
+	if ((flags & FLOW_FLAG_ACK) && !(flags & FLOW_FLAG_BOTH_FIN))
+		return FLOW_STATE_COMP;
+
+	return FLOW_STATE_INCOMP;
+}
 
 int flow_add_tag(flow_t *f, int id, void *data, void (*free)(void *data))
 {
@@ -99,33 +122,24 @@ static void flow_gc_del(struct flow *f)
 	if (!f->gc_pprev)
 		return;
 	*(f->gc_pprev) = f->gc_next;
-	if (f->gc_next) {
+	if (f->gc_next)
 		f->gc_next->gc_pprev = f->gc_pprev;
-	} else {
-		if (f->flags < FLOW_FLAG_ACK)
-			l_gc_incomp_ptail = f->gc_pprev;
-		else
-			l_gc_comp_ptail = f->gc_pprev;
-	}
+	else
+		flow_gc_head[flow_state(f)].ptail = f->gc_pprev;
 	f->gc_pprev = NULL;
 }
 
 static void flow_gc_add(struct flow *f)
 {
+	struct flow_gc_head *h = &flow_gc_head[flow_state(f)];
+
 	assert(!f->gc_pprev);
 
 	f->gc_next = NULL;
-	if (f->flags < FLOW_FLAG_ACK) {
-		*(l_gc_incomp_ptail) = f;
-		f->gc_pprev = l_gc_incomp_ptail;
-		l_gc_incomp_ptail = &f->gc_next;
-		f->timeout.tv_sec = g_time.tv_sec + FLOW_GC_INCOMP_TIMEO;
-	} else {
-		*(l_gc_comp_ptail) = f;
-		f->gc_pprev = l_gc_comp_ptail;
-		l_gc_comp_ptail = &f->gc_next;
-		f->timeout.tv_sec = g_time.tv_sec + FLOW_GC_COMP_TIMEO;
-	}
+	*(h->ptail) = f;
+	f->gc_pprev = h->ptail;
+	h->ptail = &f->gc_next;
+	f->timeout.tv_sec = g_time.tv_sec + h->timeout;
 	f->timeout.tv_usec = g_time.tv_usec;
 }
 
@@ -214,7 +228,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 
 		bucket = random() & (FLOW_NR_MAX - 1);
 		for (f = l_hash_table[bucket]; f; f = f->hash_next) {
-			if (f->flags < FLOW_FLAG_ACK)
+			if (flow_state(f) == FLOW_STATE_INCOMP)
 				df = f;
 		}
 		if (df) {
@@ -241,21 +255,19 @@ err:
 static void flow_gc(const struct timeval *tv, void *user)
 {
 	struct flow *f;
+	int state;
 
-	while ((f = l_gc_incomp_head)) {
-		if (timercmp(&f->timeout, tv, >))
-			break;
-		flow_free(f);
-	}
+	for (state = 0; state < FLOW_STATE_NUM; state++) {
+		struct flow_gc_head *h = &flow_gc_head[state];
 
-	while ((f = l_gc_comp_head)) {
-		if (timercmp(&f->timeout, tv, >))
-			break;
-		flow_free(f);
+		while ((f = h->head)) {
+			if (timercmp(&f->timeout, tv, >))
+				break;
+			flow_free(f);
+		}
 	}
 }
 
-/* two lists for incomplete flow or complete flow */
 int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		const unsigned char *data, int len, flow_data_handler h,
 		void *user)
@@ -310,7 +322,7 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 			goto err2;
 	}
 
-	if ((f->flags & FLOW_FLAG_ACK) && len > 0) {
+	if (flow_state(f) == FLOW_STATE_COMP && len > 0) {
 		uint32_t seq = ntohl(tcph->th_seq);
 		struct buf *buf = &f->buf[dir];
 
