@@ -327,6 +327,10 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 			goto err;
 		}
 	}
+
+	if ((tcph->th_flags & TH_FIN) &&
+	    ntohl(tcph->th_seq) + len == f->buf[dir].seq)
+		f->buf[dir].seq++;
 out:
 	return 0;
 err2:
