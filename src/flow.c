@@ -297,19 +297,19 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 				f->flags |= FLOW_FLAG_SERV_SYN;
 			}
 		}
-	} else if (tcph->th_flags & TH_FIN) {
-		if (dir == PKT_DIR_C2S) {
+	} else if (tcph->th_flags & TH_ACK) {
+		if ((f->flags & FLOW_FLAG_BOTH_SYN) == FLOW_FLAG_BOTH_SYN)
+			f->flags |= FLOW_FLAG_ACK;
+	}
+	if (tcph->th_flags & TH_FIN) {
+		if (dir == PKT_DIR_C2S)
 			f->flags |= FLOW_FLAG_CLNT_FIN;
-		} else {
+		else
 			f->flags |= FLOW_FLAG_SERV_FIN;
-		}
 		if ((f->flags & FLOW_FLAG_BOTH_FIN) == FLOW_FLAG_BOTH_FIN) {
 			flow_free(f);
 			goto out;
 		}
-	} else if (tcph->th_flags & TH_ACK) {
-		if ((f->flags & FLOW_FLAG_BOTH_SYN) == FLOW_FLAG_BOTH_SYN)
-			f->flags |= FLOW_FLAG_ACK;
 	}
 	flow_gc_add(f);
 
