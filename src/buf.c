@@ -115,8 +115,8 @@ void buf_drain_to(struct buf *b, uint32_t seq)
 		}
 		break;
 	}
-	if (SEQ_GT(seq, b->seq))
-		b->seq = seq;
+
+	b->seq = seq;
 }
 
 void buf_drain(struct buf *b)
