@@ -322,7 +322,7 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 			goto err2;
 	}
 
-	if (flow_state(f) == FLOW_STATE_COMP && len > 0) {
+	if ((f->flags & FLOW_FLAG_ACK) && len > 0) {
 		uint32_t seq = ntohl(tcph->th_seq);
 		struct buf *buf = &f->buf[dir];
 
