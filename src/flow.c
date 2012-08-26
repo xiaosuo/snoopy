@@ -7,14 +7,14 @@
 #include <time.h>
 
 enum {
-	FLOW_STATE_INIT		= 0,
-	FLOW_STATE_CLNT_SYN	= 1,
-	FLOW_STATE_SERV_SYN	= 2,
-	FLOW_STATE_BOTH_SYN	= 3,
-	FLOW_STATE_CLNT_FIN	= 4,
-	FLOW_STATE_SERV_FIN	= 8,
-	FLOW_STATE_BOTH_FIN	= 12,
-	FLOW_STATE_ACK		= 16,
+	FLOW_FLAG_INIT		= 0,
+	FLOW_FLAG_CLNT_SYN	= 1,
+	FLOW_FLAG_SERV_SYN	= 2,
+	FLOW_FLAG_BOTH_SYN	= 3,
+	FLOW_FLAG_CLNT_FIN	= 4,
+	FLOW_FLAG_SERV_FIN	= 8,
+	FLOW_FLAG_BOTH_FIN	= 12,
+	FLOW_FLAG_ACK		= 16,
 };
 
 struct flow_tag {
@@ -29,7 +29,7 @@ struct flow {
 	be32_t			dst;
 	be16_t			sport;
 	be16_t			dport;
-	int			state;
+	int			flags;
 	struct buf		buf[PKT_DIR_NUM];
 	struct flow_tag		*tag;
 	struct flow		*hash_next;
@@ -102,7 +102,7 @@ static void flow_gc_del(struct flow *f)
 	if (f->gc_next) {
 		f->gc_next->gc_pprev = f->gc_pprev;
 	} else {
-		if (f->state < FLOW_STATE_ACK)
+		if (f->flags < FLOW_FLAG_ACK)
 			l_gc_incomp_ptail = f->gc_pprev;
 		else
 			l_gc_comp_ptail = f->gc_pprev;
@@ -115,7 +115,7 @@ static void flow_gc_add(struct flow *f)
 	assert(!f->gc_pprev);
 
 	f->gc_next = NULL;
-	if (f->state < FLOW_STATE_ACK) {
+	if (f->flags < FLOW_FLAG_ACK) {
 		*(l_gc_incomp_ptail) = f;
 		f->gc_pprev = l_gc_incomp_ptail;
 		l_gc_incomp_ptail = &f->gc_next;
@@ -164,7 +164,7 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	f->dst = ip->ip_dst.s_addr;
 	f->sport = tcph->th_sport;
 	f->dport = tcph->th_dport;
-	f->state = FLOW_STATE_INIT;
+	f->flags = FLOW_FLAG_INIT;
 	buf_init(&f->buf[PKT_DIR_C2S], 0);
 	buf_init(&f->buf[PKT_DIR_S2C], 0);
 	f->tag = NULL;
@@ -214,7 +214,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 
 		bucket = random() & (FLOW_NR_MAX - 1);
 		for (f = l_hash_table[bucket]; f; f = f->hash_next) {
-			if (f->state < FLOW_STATE_ACK)
+			if (f->flags < FLOW_FLAG_ACK)
 				df = f;
 		}
 		if (df) {
@@ -274,30 +274,30 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 	flow_gc_del(f);
 	if (tcph->th_flags & TH_SYN) {
 		if (dir == PKT_DIR_C2S) {
-			if (f->state == FLOW_STATE_INIT) {
+			if (f->flags == FLOW_FLAG_INIT) {
 				f->buf[dir].seq = ntohl(tcph->th_seq) + 1;
-				f->state = FLOW_STATE_CLNT_SYN;
+				f->flags = FLOW_FLAG_CLNT_SYN;
 			}
 		} else {
-			if ((f->state & FLOW_STATE_BOTH_SYN) ==
-					FLOW_STATE_CLNT_SYN) {
+			if ((f->flags & FLOW_FLAG_BOTH_SYN) ==
+					FLOW_FLAG_CLNT_SYN) {
 				f->buf[dir].seq = ntohl(tcph->th_seq) + 1;
-				f->state |= FLOW_STATE_SERV_SYN;
+				f->flags |= FLOW_FLAG_SERV_SYN;
 			}
 		}
 	} else if (tcph->th_flags & TH_FIN) {
 		if (dir == PKT_DIR_C2S) {
-			f->state |= FLOW_STATE_CLNT_FIN;
+			f->flags |= FLOW_FLAG_CLNT_FIN;
 		} else {
-			f->state |= FLOW_STATE_SERV_FIN;
+			f->flags |= FLOW_FLAG_SERV_FIN;
 		}
-		if ((f->state & FLOW_STATE_BOTH_FIN) == FLOW_STATE_BOTH_FIN) {
+		if ((f->flags & FLOW_FLAG_BOTH_FIN) == FLOW_FLAG_BOTH_FIN) {
 			flow_free(f);
 			goto out;
 		}
 	} else if (tcph->th_flags & TH_ACK) {
-		if ((f->state & FLOW_STATE_BOTH_SYN) == FLOW_STATE_BOTH_SYN)
-			f->state |= FLOW_STATE_ACK;
+		if ((f->flags & FLOW_FLAG_BOTH_SYN) == FLOW_FLAG_BOTH_SYN)
+			f->flags |= FLOW_FLAG_ACK;
 	}
 	flow_gc_add(f);
 
@@ -310,7 +310,7 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 			goto err2;
 	}
 
-	if ((f->state & FLOW_STATE_ACK) && len > 0) {
+	if ((f->flags & FLOW_FLAG_ACK) && len > 0) {
 		uint32_t seq = ntohl(tcph->th_seq);
 		struct buf *buf = &f->buf[dir];
 
