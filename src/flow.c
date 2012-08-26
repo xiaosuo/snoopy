@@ -36,6 +36,7 @@ struct flow {
 	be16_t			sport;
 	be16_t			dport;
 	int			flags;
+	uint32_t		fin_seq[PKT_DIR_NUM];
 	struct buf		buf[PKT_DIR_NUM];
 	struct flow_tag		*tag;
 	struct flow		*hash_next;
@@ -302,13 +303,15 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 			f->flags |= FLOW_FLAG_ACK;
 	}
 	if (tcph->th_flags & TH_FIN) {
+		int flag;
+
 		if (dir == PKT_DIR_C2S)
-			f->flags |= FLOW_FLAG_CLNT_FIN;
+			flag = FLOW_FLAG_CLNT_FIN;
 		else
-			f->flags |= FLOW_FLAG_SERV_FIN;
-		if ((f->flags & FLOW_FLAG_BOTH_FIN) == FLOW_FLAG_BOTH_FIN) {
-			flow_free(f);
-			goto out;
+			flag = FLOW_FLAG_SERV_FIN;
+		if (!(f->flags & flag)) {
+			f->flags |= flag;
+			f->fin_seq[dir] = ntohl(tcph->th_seq) + len + 1;
 		}
 	}
 	flow_gc_add(f);
@@ -340,9 +343,15 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		}
 	}
 
-	if ((tcph->th_flags & TH_FIN) &&
-	    ntohl(tcph->th_seq) + len == f->buf[dir].seq)
+	if ((f->flags & (dir == PKT_DIR_C2S ? FLOW_FLAG_CLNT_FIN :
+			FLOW_FLAG_SERV_FIN)) &&
+	    f->buf[dir].seq == f->fin_seq[dir] - 1U)
 		f->buf[dir].seq++;
+
+	if ((f->flags & FLOW_FLAG_BOTH_FIN) == FLOW_FLAG_BOTH_FIN &&
+	    f->buf[PKT_DIR_C2S].seq == f->fin_seq[PKT_DIR_C2S] &&
+	    f->buf[PKT_DIR_S2C].seq == f->fin_seq[PKT_DIR_S2C])
+		flow_free(f);
 out:
 	return 0;
 err2:
