@@ -66,6 +66,7 @@ struct flow_gc_head {
 
 static struct flow **l_hash_table = NULL;
 int g_flow_cnt = 0;
+struct flow_stat g_flow_stat = { 0 };
 
 static inline int flow_state(struct flow *f)
 {
@@ -185,6 +186,7 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	f->tag = NULL;
 	f->gc_pprev = NULL;
 	++g_flow_cnt;
+	g_flow_stat.create++;
 
 	return f;
 err:
@@ -234,6 +236,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 		}
 		if (df) {
 			flow_free(f);
+			g_flow_stat.early_drop++;
 			break;
 		}
 	}
@@ -265,6 +268,7 @@ static void flow_gc(const struct timeval *tv, void *user)
 			if (timercmp(&f->timeout, tv, >))
 				break;
 			flow_free(f);
+			g_flow_stat.gc++;
 		}
 	}
 }
@@ -282,6 +286,7 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 
 	if (tcph->th_flags & TH_RST) {
 		flow_free(f);
+		g_flow_stat.reset++;
 		goto out;
 	}
 	flow_gc_del(f);
@@ -321,8 +326,10 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		 * Some segments received by ends are lost for us, and we
 		 * can't recover the corresponding connections in any way, so
 		 * we have to drop them. */
-		if (SEQ_GT(ntohl(tcph->th_ack), f->buf[!dir].seq))
+		if (SEQ_GT(ntohl(tcph->th_ack), f->buf[!dir].seq)) {
+			g_flow_stat.loss_of_sync++;
 			goto err2;
+		}
 	}
 
 	if ((f->flags & FLOW_FLAG_ACK) && len > 0) {
@@ -350,8 +357,10 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 
 	if ((f->flags & FLOW_FLAG_BOTH_FIN) == FLOW_FLAG_BOTH_FIN &&
 	    f->buf[PKT_DIR_C2S].seq == f->fin_seq[PKT_DIR_C2S] &&
-	    f->buf[PKT_DIR_S2C].seq == f->fin_seq[PKT_DIR_S2C])
+	    f->buf[PKT_DIR_S2C].seq == f->fin_seq[PKT_DIR_S2C]) {
 		flow_free(f);
+		g_flow_stat.normal++;
+	}
 out:
 	return 0;
 err2:

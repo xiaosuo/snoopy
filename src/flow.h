@@ -2,6 +2,7 @@
 #ifndef __FLOW_H
 #define __FLOW_H
 
+#include <stdint.h>
 #include <netinet/ip.h>
 #include <sys/time.h>
 #define __FAVOR_BSD
@@ -12,6 +13,17 @@ enum {
 	PKT_DIR_S2C,
 	PKT_DIR_NUM,
 };
+
+struct flow_stat {
+	uint64_t	create;
+	uint64_t	normal;
+	uint64_t	gc;
+	uint64_t	reset;
+	uint64_t	loss_of_sync;
+	uint64_t	early_drop;
+};
+
+extern struct flow_stat g_flow_stat;
 
 typedef struct flow flow_t;
 
