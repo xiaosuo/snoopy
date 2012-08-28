@@ -520,8 +520,7 @@ static void inspect_body(const unsigned char *data, int len, void *user)
 			.r	= r,
 			.fc	= fc,
 		};
-		if (!fc->sch_ctx &&
-		    !(fc->sch_ctx = patn_sch_ctx_alloc()))
+		if (!fc->sch_ctx && !(fc->sch_ctx = patn_sch_ctx_alloc()))
 			goto err;
 #ifndef NDEBUG
 		if (write(STDOUT_FILENO, data, len) != len)
