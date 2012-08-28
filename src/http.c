@@ -472,31 +472,30 @@ static int __http_inspect_data(http_inspector_t *insp,
 		n = http_get_line(c, &end, data, len, user);
 		if (n < 0)
 			goto err;
-		if (end) {
-			c->state = HTTP_STATE_MSG_HDR;
-			if (dir == PKT_DIR_C2S) {
-				if (http_parse_request_line(insp, c->line,
-						user))
-					goto err;
-			}
-			c->line_len = 0;
+		if (!end)
+			break;
+		c->state = HTTP_STATE_MSG_HDR;
+		if (dir == PKT_DIR_C2S) {
+			if (http_parse_request_line(insp, c->line, user))
+				goto err;
 		}
+		c->line_len = 0;
 		break;
 	case HTTP_STATE_MSG_HDR:
 		n = http_parse_msg_hdr(insp, c, &end, dir, data, len, user);
 		if (n < 0)
 			goto err;
-		if (end) {
-			if (c->is_chunked) {
-				c->state = HTTP_STATE_MSG_CHUNK_SIZE;
-				c->line_len = 0;
-			} else if (c->body_len == 0) {
-				http_inspect_ctx_common_init(c);
-				call_msg_end_handler(insp, dir, user);
-			} else {
-				c->state = HTTP_STATE_MSG_BODY;
-				c->line_len = 0;
-			}
+		if (!end)
+			break;
+		if (c->is_chunked) {
+			c->state = HTTP_STATE_MSG_CHUNK_SIZE;
+			c->line_len = 0;
+		} else if (c->body_len == 0) {
+			http_inspect_ctx_common_init(c);
+			call_msg_end_handler(insp, dir, user);
+		} else {
+			c->state = HTTP_STATE_MSG_BODY;
+			c->line_len = 0;
 		}
 		break;
 	case HTTP_STATE_MSG_BODY:
