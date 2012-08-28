@@ -178,6 +178,10 @@ enum {
 	HTTP_STATE_START_LINE,
 	HTTP_STATE_MSG_HDR,
 	HTTP_STATE_MSG_BODY,
+	HTTP_STATE_MSG_CHUNK_SIZE,
+	HTTP_STATE_MSG_CHUNK_DATA,
+	HTTP_STATE_MSG_CHUNK_CRLF,
+	HTTP_STATE_MSG_CHUNK_TRAILER,
 };
 
 #define HTTP_LINE_SIZE	1024
@@ -193,6 +197,7 @@ struct http_inspect_ctx_common {
 	int			minor_state;
 	unsigned long long	body_len;
 	int			line_len;
+	bool			is_chunked;
 	char			line[HTTP_LINE_SIZE];
 };
 
@@ -202,6 +207,7 @@ static void http_inspect_ctx_common_init(struct http_inspect_ctx_common *c)
 	c->minor_state = MINOR_STATE_INIT;
 	c->body_len = 0;
 	c->line_len = 0;
+	c->is_chunked = false;
 }
 
 static int http_inspect_ctx_common_add_line(struct http_inspect_ctx_common *c,
@@ -346,8 +352,17 @@ static int http_parse_header_field(http_inspector_t *insp,
 	while (*fv == ' ' || *fv == '\t')
 		fv++;
 
-	if (strcasecmp(hdr, "Content-Length") == 0)
+	if (strcasecmp(hdr, "Content-Length") == 0) {
 		c->body_len = strtoull(fv, NULL, 0);
+	} else if (strcasecmp(hdr, "Transfer-Encoding") == 0) {
+		/*
+		 * Transfer-Encoding       = "Transfer-Encoding" ":" 1#transfer-coding
+		 * transfer-coding         = "chunked" | transfer-extension
+		 * transfer-extension      = token *( ";" parameter )
+		 */
+		if (strcmp(fv, "chunked") == 0)
+			c->is_chunked = true;
+	}
 
 	call_header_field_handler(insp, dir, hdr, fv, user);
 
@@ -472,7 +487,10 @@ static int __http_inspect_data(http_inspector_t *insp,
 		if (n < 0)
 			goto err;
 		if (end) {
-			if (c->body_len == 0) {
+			if (c->is_chunked) {
+				c->state = HTTP_STATE_MSG_CHUNK_SIZE;
+				c->line_len = 0;
+			} else if (c->body_len == 0) {
 				http_inspect_ctx_common_init(c);
 				call_msg_end_handler(insp, dir, user);
 			} else {
@@ -491,6 +509,64 @@ static int __http_inspect_data(http_inspector_t *insp,
 			http_inspect_ctx_common_init(c);
 			call_msg_end_handler(insp, dir, user);
 		}
+		break;
+/*
+       Chunked-Body   = *chunk
+                        last-chunk
+                        trailer
+                        CRLF
+
+       chunk          = chunk-size [ chunk-extension ] CRLF
+                        chunk-data CRLF
+       chunk-size     = 1*HEX
+       last-chunk     = 1*("0") [ chunk-extension ] CRLF
+
+       chunk-extension= *( ";" chunk-ext-name [ "=" chunk-ext-val ] )
+       chunk-ext-name = token
+       chunk-ext-val  = token | quoted-string
+       chunk-data     = chunk-size(OCTET)
+       trailer        = *(entity-header CRLF)
+*/
+	case HTTP_STATE_MSG_CHUNK_SIZE:
+		n = http_get_line(c, &end, data, len, user);
+		if (n < 0)
+			goto err;
+		if (!end)
+			break;
+		c->body_len = strtoull(c->line, NULL, 16);
+		if (c->body_len > 0)
+			c->state = HTTP_STATE_MSG_CHUNK_DATA;
+		else
+			c->state = HTTP_STATE_MSG_CHUNK_TRAILER;
+		c->line_len = 0;
+		break;
+	case HTTP_STATE_MSG_CHUNK_DATA:
+		assert(c->body_len > 0);
+		n = MIN(len, c->body_len);
+		c->body_len -= n;
+		if (dir == PKT_DIR_S2C)
+			call_response_body_handler(insp, data, n, user);
+		if (c->body_len == 0)
+			c->state = HTTP_STATE_MSG_CHUNK_CRLF;
+		break;
+	case HTTP_STATE_MSG_CHUNK_CRLF:
+		n = http_get_line(c, &end, data, len, user);
+		if (n < 0)
+			goto err;
+		if (!end)
+			break;
+		if (c->line_len != 0)
+			goto err;
+		c->state = HTTP_STATE_MSG_CHUNK_SIZE;
+		break;
+	case HTTP_STATE_MSG_CHUNK_TRAILER:
+		n = http_parse_msg_hdr(insp, c, &end, dir, data, len, user);
+		if (n < 0)
+			goto err;
+		if (!end)
+			break;
+		http_inspect_ctx_common_init(c);
+		call_msg_end_handler(insp, dir, user);
 		break;
 	default:
 		abort();
