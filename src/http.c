@@ -21,10 +21,16 @@ struct body_handler_iter {
 	struct body_handler_iter	*next;
 };
 
+struct msg_end_handler_iter {
+	http_msg_end_handler		handler;
+	struct msg_end_handler_iter	*next;
+};
+
 struct http_inspector {
 	struct request_line_handler_iter	*request_line;
 	struct header_field_handler_iter	*header_field[PKT_DIR_NUM];
 	struct body_handler_iter		*response_body;
+	struct msg_end_handler_iter		*msg_end[PKT_DIR_NUM];
 };
 
 http_inspector_t *http_inspector_alloc(void)
@@ -37,6 +43,7 @@ void http_inspector_free(http_inspector_t *insp)
 	struct request_line_handler_iter *rq_line;
 	struct header_field_handler_iter *hdr_fild;
 	struct body_handler_iter *body;
+	struct msg_end_handler_iter *msg_end;
 	int dir;
 
 	while ((rq_line = insp->request_line)) {
@@ -54,6 +61,13 @@ void http_inspector_free(http_inspector_t *insp)
 	while ((body = insp->response_body)) {
 		insp->response_body = body->next;
 		free(body);
+	}
+
+	for (dir = 0; dir < PKT_DIR_NUM; dir++) {
+		while ((msg_end = insp->msg_end[dir])) {
+			insp->msg_end[dir] = msg_end->next;
+			free(msg_end);
+		}
 	}
 
 	free(insp);
@@ -101,6 +115,20 @@ int http_inspector_add_response_body_handler(http_inspector_t *insp,
 	return 0;
 }
 
+int http_inspector_add_msg_end_handler(http_inspector_t *insp, int dir,
+		http_msg_end_handler h)
+{
+	struct msg_end_handler_iter *i = malloc(sizeof(*i));
+
+	if (!i)
+		return -1;
+	i->handler = h;
+	i->next = insp->msg_end[dir];
+	insp->msg_end[dir] = i;
+
+	return 0;
+}
+
 static void call_request_line_handler(http_inspector_t *insp,
 		const char *method, const char *path, const char *http_version,
 		void *user)
@@ -127,6 +155,14 @@ static void call_response_body_handler(http_inspector_t *insp,
 
 	for (i = insp->response_body; i; i = i->next)
 		i->handler(data, len, user);
+}
+
+static void call_msg_end_handler(http_inspector_t *insp, int dir, void *user)
+{
+	struct msg_end_handler_iter *i;
+
+	for (i = insp->msg_end[dir]; i; i = i->next)
+		i->handler(user);
 }
 
 /*
@@ -344,14 +380,9 @@ static int http_handle_state_msg_hdr(http_inspector_t *insp,
 			n = ptr - data;
 			if (n + c->line_len == 2) {
 header_body_delimiter:
-				call_header_field_handler(insp, dir,
-						NULL, NULL, user);
 				if (c->body_len == 0) {
 					http_inspect_ctx_common_init(c);
-					if (dir == PKT_DIR_S2C) {
-						call_response_body_handler(insp,
-							NULL, 0, user);
-					}
+					call_msg_end_handler(insp, dir, user);
 				} else {
 					c->state = HTTP_STATE_MSG_BODY;
 					c->line_len = 0;
@@ -454,9 +485,8 @@ static int __http_inspect_data(http_inspector_t *insp,
 		if (dir == PKT_DIR_S2C)
 			call_response_body_handler(insp, data, len, user);
 		if (c->body_len == 0) {
-			if (dir == PKT_DIR_S2C)
-				call_response_body_handler(insp, NULL, 0, user);
 			http_inspect_ctx_common_init(c);
+			call_msg_end_handler(insp, dir, user);
 		}
 		break;
 	default:
@@ -491,27 +521,23 @@ int http_inspect_data(http_inspector_t *insp, http_inspect_ctx_t *ctx, int dir,
 
 void print_body(const unsigned char *data, int len, void *user)
 {
-	if (data) {
-		int *poff = user;
-		const char *exp = " 1234\n";
+	int *poff = user;
+	const char *exp = " 1234\n";
 
-		if (!poff) {
-			assert(len == 6 && memcmp(data, " 1234\n", 6) == 0);
-		} else {
-			assert(len == 1 && exp[*poff] == *data);
-			*poff += 1;
-		}
+	if (!poff) {
+		assert(len == 6 && memcmp(data, " 1234\n", 6) == 0);
+	} else {
+		assert(len == 1 && exp[*poff] == *data);
+		*poff += 1;
 	}
 }
 
 void print_hdr(const char *name, const char *value, void *user)
 {
-	if (name) {
-		if (strcasecmp(name, "Host") == 0)
-			assert(strcmp(value, "www.test.com") == 0);
-		else if (strcasecmp(name, "Test") == 0)
-			assert(strcmp(value, "multi\r\n line") == 0);
-	}
+	if (strcasecmp(name, "Host") == 0)
+		assert(strcmp(value, "www.test.com") == 0);
+	else if (strcasecmp(name, "Test") == 0)
+		assert(strcmp(value, "multi\r\n line") == 0);
 }
 
 void print_path(const char *method, const char *path, const char *http_version,

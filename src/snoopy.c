@@ -405,16 +405,27 @@ static void save_host(const char *name, const char *value, void *user)
 
 	if (!(r = fc->req_part))
 		goto err;
-	if (!name) {
-		fc->req_part = NULL;
-		*(fc->req_ptail) = r;
-		fc->req_ptail = &r->next;
-	} else if (strcasecmp(name, "Host") == 0) {
+	if (strcasecmp(name, "Host") == 0) {
 		if (r->host)
 			free(r->host);
 		pr_debug("host: %s\n", value);
 		r->host = strdup(value);
 	}
+err:
+	return;
+}
+
+static void end_req(void *user)
+{
+	struct http_user *hu = user;
+	struct flow_context *fc = hu->fc;
+	struct http_req *r;
+
+	if (!(r = fc->req_part))
+		goto err;
+	fc->req_part = NULL;
+	*(fc->req_ptail) = r;
+	fc->req_ptail = &r->next;
 err:
 	return;
 }
@@ -501,33 +512,42 @@ static void inspect_body(const unsigned char *data, int len, void *user)
 
 	if (!(r = fc->req_head))
 		goto err;
-	if (!data) {
-		fc->req_head = r->next;
-		if (!fc->req_head)
-			fc->req_ptail = &fc->req_head;
-		http_req_free(r);
-		if (fc->sch_ctx)
-			patn_sch_ctx_reset(fc->sch_ctx);
-	} else {
-		if (r->host && r->path && !fc->stop_inspect && !r->ignore &&
-		    (fc->snoopy->inspect_all || !r->is_non_text_res)) {
-			struct patn_user pn = {
-				.ts	= hu->ts,
-				.ip	= hu->ip,
-				.r	= r,
-				.fc	= fc,
-			};
-			if (!fc->sch_ctx &&
-			    !(fc->sch_ctx = patn_sch_ctx_alloc()))
-				goto err;
+	if (r->host && r->path && !fc->stop_inspect && !r->ignore &&
+	    (fc->snoopy->inspect_all || !r->is_non_text_res)) {
+		struct patn_user pn = {
+			.ts	= hu->ts,
+			.ip	= hu->ip,
+			.r	= r,
+			.fc	= fc,
+		};
+		if (!fc->sch_ctx &&
+		    !(fc->sch_ctx = patn_sch_ctx_alloc()))
+			goto err;
 #ifndef NDEBUG
-			if (write(STDOUT_FILENO, data, len) != len)
-				exit(EXIT_FAILURE);
+		if (write(STDOUT_FILENO, data, len) != len)
+			exit(EXIT_FAILURE);
 #endif
-			patn_sch(fc->snoopy->patn_list, fc->sch_ctx, data, len,
-					log_keyword, &pn);
-		}
+		patn_sch(fc->snoopy->patn_list, fc->sch_ctx, data, len,
+				log_keyword, &pn);
 	}
+err:
+	return;
+}
+
+static void end_res(void *user)
+{
+	struct http_user *hu = user;
+	struct flow_context *fc = hu->fc;
+	struct http_req *r;
+
+	if (!(r = fc->req_head))
+		goto err;
+	fc->req_head = r->next;
+	if (!fc->req_head)
+		fc->req_ptail = &fc->req_head;
+	http_req_free(r);
+	if (fc->sch_ctx)
+		patn_sch_ctx_reset(fc->sch_ctx);
 err:
 	return;
 }
@@ -647,6 +667,10 @@ int main(int argc, char *argv[])
 		die("failed to add the response header field handler\n");
 	if (http_inspector_add_response_body_handler(ctx.insp, inspect_body))
 		die("failed to add the response body handler\n");
+	if (http_inspector_add_msg_end_handler(ctx.insp, PKT_DIR_C2S, end_req))
+		die("failed to add the request end handler\n");
+	if (http_inspector_add_msg_end_handler(ctx.insp, PKT_DIR_S2C, end_res))
+		die("failed to add the response end handler\n");
 	ctx.patn_list = patn_list_load(key_fn);
 	if (!ctx.patn_list)
 		die("failed to load keywords in %s\n", key_fn);
