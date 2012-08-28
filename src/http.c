@@ -503,7 +503,7 @@ static int __http_inspect_data(http_inspector_t *insp,
 		n = MIN(len, c->body_len);
 		c->body_len -= n;
 		if (dir == PKT_DIR_S2C)
-			call_response_body_handler(insp, data, len, user);
+			call_response_body_handler(insp, data, n, user);
 		if (c->body_len == 0) {
 			http_inspect_ctx_common_init(c);
 			call_msg_end_handler(insp, dir, user);
