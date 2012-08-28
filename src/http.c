@@ -354,13 +354,14 @@ static int http_parse_header_field(http_inspector_t *insp,
 	return 0;
 }
 
-static int http_handle_state_msg_hdr(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, int dir,
+static int http_parse_msg_hdr(http_inspector_t *insp,
+		struct http_inspect_ctx_common *c, bool *end, int dir,
 		const unsigned char *data, int len, void *user)
 {
 	int n;
 	const unsigned char *ptr;
 
+	*end = false;
 	switch (c->minor_state) {
 	case MINOR_STATE_INIT:
 		ptr = memmem(data, len, "\r\n", 2);
@@ -368,14 +369,7 @@ static int http_handle_state_msg_hdr(http_inspector_t *insp,
 			ptr += 2;
 			n = ptr - data;
 			if (n + c->line_len == 2) {
-header_body_delimiter:
-				if (c->body_len == 0) {
-					http_inspect_ctx_common_init(c);
-					call_msg_end_handler(insp, dir, user);
-				} else {
-					c->state = HTTP_STATE_MSG_BODY;
-					c->line_len = 0;
-				}
+				*end = true;
 				break;
 			}
 			if (ptr == data + len) {
@@ -412,7 +406,8 @@ header_body_delimiter:
 			if (c->line_len == 1) {
 				n = 1;
 				c->minor_state = MINOR_STATE_INIT;
-				goto header_body_delimiter;
+				*end = true;
+				break;
 			}
 			c->minor_state = MINOR_STATE_CRLF;
 			n = 1;
@@ -473,9 +468,18 @@ static int __http_inspect_data(http_inspector_t *insp,
 		}
 		break;
 	case HTTP_STATE_MSG_HDR:
-		n = http_handle_state_msg_hdr(insp, c, dir, data, len, user);
+		n = http_parse_msg_hdr(insp, c, &end, dir, data, len, user);
 		if (n < 0)
 			goto err;
+		if (end) {
+			if (c->body_len == 0) {
+				http_inspect_ctx_common_init(c);
+				call_msg_end_handler(insp, dir, user);
+			} else {
+				c->state = HTTP_STATE_MSG_BODY;
+				c->line_len = 0;
+			}
+		}
 		break;
 	case HTTP_STATE_MSG_BODY:
 		assert(c->body_len > 0);
