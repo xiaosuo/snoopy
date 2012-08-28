@@ -15,7 +15,8 @@ Changli Gao <xiaosuo@gmail.com>
 
 ## Requirements
 
-* libpcap
+* [libpcap](http://www.tcpdump.org)
+* [zlib](http://www.zlib.net)
 
 ## Install
 
