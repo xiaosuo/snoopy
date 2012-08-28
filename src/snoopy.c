@@ -604,6 +604,37 @@ int main(int argc, char *argv[])
 	if (!file && !nic)
 		die("FILE or NIC must be given\n");
 
+	/* initialize snoopy context */
+	if (flow_init())
+		die("failed to initialize flow service\n");
+	if (log_open(log_fn))
+		die("failed to open log file %s\n", log_fn);
+	ctx.rule_list = rule_list_load(rule_fn);
+	if (!ctx.rule_list)
+		die("failed to load rules in %s\n", rule_fn);
+	ctx.insp = http_inspector_alloc();
+	if (!ctx.insp)
+		die("failed to allocate a http inspector\n");
+	if (http_inspector_add_request_line_handler(ctx.insp, save_path))
+		die("failed to add the request line handler\n");
+	if (http_inspector_add_header_field_handler(ctx.insp, PKT_DIR_C2S,
+			save_host))
+		die("failed to add the request header field handler\n");
+	if (http_inspector_add_header_field_handler(ctx.insp, PKT_DIR_S2C,
+			parse_res_hdr_fild))
+		die("failed to add the response header field handler\n");
+	if (http_inspector_add_response_body_handler(ctx.insp, inspect_body))
+		die("failed to add the response body handler\n");
+	ctx.patn_list = patn_list_load(key_fn);
+	if (!ctx.patn_list)
+		die("failed to load keywords in %s\n", key_fn);
+	if (signal(SIGINT, handle_sigint) == SIG_ERR)
+		die("failed to install the SIGINT handler\n");
+	if (signal(SIGQUIT, handle_sigquit) == SIG_ERR)
+		die("failed to install the SIGQUIT handler\n");
+	if (signal(SIGTERM, handle_sigquit) == SIG_ERR)
+		die("failed to install the SIGTERM handler\n");
+
 	/* open the pcap handler */
 	if (nic) {
 		if (!snap_len) {
@@ -667,35 +698,6 @@ int main(int argc, char *argv[])
 		    pcap_datalink_val_to_name(pcap_datalink(p)));
 		break;
 	}
-	if (flow_init())
-		die("failed to initialize flow service\n");
-	if (log_open(log_fn))
-		die("failed to open log file %s\n", log_fn);
-	ctx.rule_list = rule_list_load(rule_fn);
-	if (!ctx.rule_list)
-		die("failed to load rules in %s\n", rule_fn);
-	ctx.insp = http_inspector_alloc();
-	if (!ctx.insp)
-		die("failed to allocate a http inspector\n");
-	if (http_inspector_add_request_line_handler(ctx.insp, save_path))
-		die("failed to add the request line handler\n");
-	if (http_inspector_add_header_field_handler(ctx.insp, PKT_DIR_C2S,
-			save_host))
-		die("failed to add the request header field handler\n");
-	if (http_inspector_add_header_field_handler(ctx.insp, PKT_DIR_S2C,
-			parse_res_hdr_fild))
-		die("failed to add the response header field handler\n");
-	if (http_inspector_add_response_body_handler(ctx.insp, inspect_body))
-		die("failed to add the response body handler\n");
-	ctx.patn_list = patn_list_load(key_fn);
-	if (!ctx.patn_list)
-		die("failed to load keywords in %s\n", key_fn);
-	if (signal(SIGINT, handle_sigint) == SIG_ERR)
-		die("failed to install the SIGINT handler\n");
-	if (signal(SIGQUIT, handle_sigquit) == SIG_ERR)
-		die("failed to install the SIGQUIT handler\n");
-	if (signal(SIGTERM, handle_sigquit) == SIG_ERR)
-		die("failed to install the SIGTERM handler\n");
 	if (background && daemon(0, 0))
 		die("failed to become a background daemon\n");
 	while (1) {
