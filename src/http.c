@@ -397,7 +397,8 @@ static int http_parse_header_field(http_inspector_t *insp,
 		 * transfer-coding         = "chunked" | transfer-extension
 		 * transfer-extension      = token *( ";" parameter )
 		 */
-		if (strcmp(fv, "chunked") == 0)
+		/* All transfer-coding values are case-insensitive */
+		if (strcasecmp(fv, "chunked") == 0)
 			c->is_chunked = true;
 	} else if (strcasecmp(hdr, "Content-Encoding") == 0) {
 		/*
