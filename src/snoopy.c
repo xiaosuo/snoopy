@@ -77,6 +77,7 @@ struct http_req {
 	char		*path;
 	char		*host;
 	bool		is_non_text_res;
+	bool		ignore;
 	struct http_req	*next;
 };
 
@@ -441,6 +442,27 @@ static void parse_res_hdr_fild(const char *name, const char *value, void *user)
 		 */
 		if (strncasecmp(value, "text/", 5) != 0)
 			r->is_non_text_res = true;
+	} else if (strcasecmp(name, "Content-Range") == 0) {
+		const char *ptr;
+
+		/*
+		 * Content-Range = "Content-Range" ":" content-range-spec
+		 * content-range-spec      = byte-content-range-spec
+		 * byte-content-range-spec = bytes-unit SP
+		 * 			     byte-range-resp-spec "/"
+		 * 			     ( instance-length | "*" )
+		 * byte-range-resp-spec = (first-byte-pos "-" last-byte-pos) |
+		 *                         "*"
+		 * instance-length           = 1*DIGIT
+		 * range-unit       = bytes-unit | other-range-unit
+		 * bytes-unit       = "bytes"
+		 * other-range-unit = token
+		 */
+		/* skip bytes-unit */
+		ptr = strchr(value, ' ');
+		/* we can NOT recover from partial contents */
+		if (ptr && strtoull(ptr + 1, NULL, 10) != 0ULL)
+			r->ignore = true;
 	}
 err:
 	return;
@@ -487,7 +509,7 @@ static void inspect_body(const unsigned char *data, int len, void *user)
 		if (fc->sch_ctx)
 			patn_sch_ctx_reset(fc->sch_ctx);
 	} else {
-		if (r->host && r->path && !fc->stop_inspect &&
+		if (r->host && r->path && !fc->stop_inspect && !r->ignore &&
 		    (fc->snoopy->inspect_all || !r->is_non_text_res)) {
 			struct patn_user pn = {
 				.ts	= hu->ts,
