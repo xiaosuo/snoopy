@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <zlib.h>
 
 struct request_line_handler_iter {
 	http_request_line_handler		handler;
@@ -215,6 +216,7 @@ struct http_inspect_ctx_common {
 	unsigned long long	body_len;
 	int			line_len;
 	bool			is_chunked;
+	z_streamp		streamp;
 	char			line[HTTP_LINE_SIZE];
 };
 
@@ -225,6 +227,16 @@ static void http_inspect_ctx_common_init(struct http_inspect_ctx_common *c)
 	c->body_len = 0;
 	c->line_len = 0;
 	c->is_chunked = false;
+	c->streamp = NULL;
+}
+
+static void http_inspect_ctx_common_reset(struct http_inspect_ctx_common *c)
+{
+	if (c->streamp) {
+		inflateEnd(c->streamp);
+		free(c->streamp);
+	}
+	http_inspect_ctx_common_init(c);
 }
 
 static int http_inspect_ctx_common_add_line(struct http_inspect_ctx_common *c,
@@ -257,6 +269,14 @@ http_inspect_ctx_t *http_inspect_ctx_alloc(void)
 
 void http_inspect_ctx_free(http_inspect_ctx_t *ctx)
 {
+	int dir;
+
+	for (dir = 0; dir < PKT_DIR_NUM; dir++) {
+		if (ctx->common[dir].streamp) {
+			inflateEnd(ctx->common[dir].streamp);
+			free(ctx->common[dir].streamp);
+		}
+	}
 	free(ctx);
 }
 
@@ -364,7 +384,7 @@ static int http_parse_header_field(http_inspector_t *insp,
 	char *fv = strchr(hdr, ':');
 
 	if (!fv)
-		return -1;
+		goto err;
 	*fv++ = '\0';
 	while (*fv == ' ' || *fv == '\t')
 		fv++;
@@ -379,11 +399,42 @@ static int http_parse_header_field(http_inspector_t *insp,
 		 */
 		if (strcmp(fv, "chunked") == 0)
 			c->is_chunked = true;
+	} else if (strcasecmp(hdr, "Content-Encoding") == 0) {
+		/*
+		 * Content-Encoding  = "Content-Encoding" ":" 1#content-coding
+		 * content-coding   = token
+		 * All content-coding values are case-insensitive
+		 */
+		/*
+		 * If multiple encodings have been applied to an entity,
+		 * the content codings MUST be listed in the order in which
+		 * they were applied.
+		 */
+		/* We only support one encoding now */
+		if (c->streamp) {
+			inflateEnd(c->streamp);
+			free(c->streamp);
+			c->streamp = NULL;
+		}
+		if (strcasecmp(fv, "gzip") == 0 ||
+		    strcasecmp(fv, "x-gzip") == 0 ||
+		    strcasecmp(fv, "deflate") == 0) {
+			c->streamp = calloc(1, sizeof(z_stream));
+			if (!c->streamp)
+				goto err;
+			if (inflateInit2(c->streamp, 15 + 32) != Z_OK)
+				goto err2;
+		}
 	}
 
 	call_header_field_handler(insp, dir, hdr, fv, user);
 
 	return 0;
+err2:
+	free(c->streamp);
+	c->streamp = NULL;
+err:
+	return -1;
 }
 
 static int http_parse_msg_hdr(http_inspector_t *insp,
@@ -475,6 +526,47 @@ err:
 	return -1;
 }
 
+#define HTTP_DECODE_BUF_SIZE	4096
+
+static int decode_res_content(http_inspector_t *insp,
+		struct http_inspect_ctx_common *c, const unsigned char *data,
+		int len, void *user)
+{
+	if (!c->streamp) {
+		call_response_body_handler(insp, data, len, user);
+	} else {
+		unsigned char buf[HTTP_DECODE_BUF_SIZE];
+		z_streamp streamp = c->streamp;
+		int retval;
+
+		assert(streamp->avail_in == 0);
+		streamp->next_in = (unsigned char *)data;
+		streamp->avail_in = len;
+		do {
+			streamp->next_out = buf;
+			streamp->avail_out = sizeof(buf);
+			retval = inflate(streamp, Z_NO_FLUSH);
+			switch (retval) {
+			case Z_OK:
+			case Z_STREAM_END:
+				break;
+			default:
+				goto err;
+				break;
+			}
+			if (streamp->avail_out != sizeof(buf)) {
+				call_response_body_handler(insp, buf,
+						sizeof(buf) - streamp->avail_out,
+						user);
+			}
+		} while (retval != Z_STREAM_END && streamp->avail_in > 0);
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
 /* return -1 on fatal, and callers should not call it again.
  * return 0 if all the data is consumed or bufferd. */
 static int __http_inspect_data(http_inspector_t *insp,
@@ -508,7 +600,7 @@ static int __http_inspect_data(http_inspector_t *insp,
 			c->state = HTTP_STATE_MSG_CHUNK_SIZE;
 			c->line_len = 0;
 		} else if (c->body_len == 0) {
-			http_inspect_ctx_common_init(c);
+			http_inspect_ctx_common_reset(c);
 			call_msg_end_handler(insp, dir, user);
 		} else {
 			c->state = HTTP_STATE_MSG_BODY;
@@ -519,10 +611,11 @@ static int __http_inspect_data(http_inspector_t *insp,
 		assert(c->body_len > 0);
 		n = MIN(len, c->body_len);
 		c->body_len -= n;
-		if (dir == PKT_DIR_S2C)
-			call_response_body_handler(insp, data, n, user);
+		if (dir == PKT_DIR_S2C &&
+		    decode_res_content(insp, c, data, n, user))
+			goto err;
 		if (c->body_len == 0) {
-			http_inspect_ctx_common_init(c);
+			http_inspect_ctx_common_reset(c);
 			call_msg_end_handler(insp, dir, user);
 		}
 		break;
@@ -560,8 +653,9 @@ static int __http_inspect_data(http_inspector_t *insp,
 		assert(c->body_len > 0);
 		n = MIN(len, c->body_len);
 		c->body_len -= n;
-		if (dir == PKT_DIR_S2C)
-			call_response_body_handler(insp, data, n, user);
+		if (dir == PKT_DIR_S2C &&
+		    decode_res_content(insp, c, data, n, user))
+			goto err;
 		if (c->body_len == 0)
 			c->state = HTTP_STATE_MSG_CHUNK_CRLF;
 		break;
@@ -581,7 +675,7 @@ static int __http_inspect_data(http_inspector_t *insp,
 			goto err;
 		if (!end)
 			break;
-		http_inspect_ctx_common_init(c);
+		http_inspect_ctx_common_reset(c);
 		call_msg_end_handler(insp, dir, user);
 		break;
 	default:

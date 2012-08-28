@@ -1,5 +1,5 @@
 CFLAGS += -Wall -O2 -D_GNU_SOURCE
-LDFLAGS += -lpcap
+LDFLAGS += -lpcap -lz
 TARGETS := snoopy
 OBJS := $(patsubst %.c,%.o,$(wildcard *.c))
 PREFIX ?= /usr/local
