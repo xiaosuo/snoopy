@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 struct request_line_handler_iter {
 	http_request_line_handler		handler;
@@ -265,28 +266,22 @@ err:
 /*
        Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
 */
-static int http_handle_state_start_line(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, int dir,
-		const unsigned char *data, int len, void *user)
+static int http_get_line(struct http_inspect_ctx_common *c,
+		bool *end, const unsigned char *data, int len, void *user)
 {
 	int n;
 	const unsigned char *ptr;
 
+	*end = false;
 	switch (c->minor_state) {
 	case MINOR_STATE_INIT:
 		ptr = memmem(data, len, "\r\n", 2);
 		if (ptr) {
 			ptr += 2;
-			c->state = HTTP_STATE_MSG_HDR;
 			n = ptr - data;
 			if (http_inspect_ctx_common_add_line(c, data, n - 2))
 				goto err;
-			if (dir == PKT_DIR_C2S) {
-				if (http_parse_request_line(insp, c->line,
-						user))
-					goto err;
-			}
-			c->line_len = 0;
+			*end = true;
 			break;
 		}
 		if (data[len - 1] == '\r')
@@ -298,15 +293,9 @@ static int http_handle_state_start_line(http_inspector_t *insp,
 	case MINOR_STATE_CR:
 		c->minor_state = MINOR_STATE_INIT;
 		if (data[0] == '\n') {
-			c->state = HTTP_STATE_MSG_HDR;
 			n = 1;
 			c->line[--c->line_len] = '\0';
-			if (dir == PKT_DIR_C2S) {
-				if (http_parse_request_line(insp, c->line,
-						user))
-					goto err;
-			}
-			c->line_len = 0;
+			*end = true;
 			break;
 		}
 		n = 0;
@@ -466,12 +455,22 @@ static int __http_inspect_data(http_inspector_t *insp,
 		const unsigned char *data, int len, void *user)
 {
 	int n;
+	bool end;
 
 	switch (c->state) {
 	case HTTP_STATE_START_LINE:
-		n = http_handle_state_start_line(insp, c, dir, data, len, user);
+		n = http_get_line(c, &end, data, len, user);
 		if (n < 0)
 			goto err;
+		if (end) {
+			c->state = HTTP_STATE_MSG_HDR;
+			if (dir == PKT_DIR_C2S) {
+				if (http_parse_request_line(insp, c->line,
+						user))
+					goto err;
+			}
+			c->line_len = 0;
+		}
 		break;
 	case HTTP_STATE_MSG_HDR:
 		n = http_handle_state_msg_hdr(insp, c, dir, data, len, user);
