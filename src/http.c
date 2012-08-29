@@ -540,7 +540,9 @@ static int decode_res_content(http_inspector_t *insp,
 		z_streamp streamp = c->streamp;
 		int retval;
 
-		assert(streamp->avail_in == 0);
+		/* the stream is end */
+		if (streamp->avail_in != 0)
+			goto out;
 		streamp->next_in = (unsigned char *)data;
 		streamp->avail_in = len;
 		do {
@@ -562,7 +564,7 @@ static int decode_res_content(http_inspector_t *insp,
 			}
 		} while (retval != Z_STREAM_END && streamp->avail_in > 0);
 	}
-
+out:
 	return 0;
 err:
 	return -1;
