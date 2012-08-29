@@ -423,7 +423,7 @@ static int http_parse_header_field(http_inspector_t *insp,
 			c->streamp = calloc(1, sizeof(z_stream));
 			if (!c->streamp)
 				goto err;
-			if (inflateInit2(c->streamp, 15 + 32) != Z_OK)
+			if (inflateInit2(c->streamp, MAX_WBITS + 32) != Z_OK)
 				goto err2;
 		}
 	}
