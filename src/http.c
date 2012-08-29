@@ -558,9 +558,9 @@ static int decode_res_content(http_inspector_t *insp,
 				break;
 			}
 			if (streamp->avail_out != sizeof(buf)) {
-				call_response_body_handler(insp, buf,
-						sizeof(buf) - streamp->avail_out,
-						user);
+				int n = sizeof(buf) - streamp->avail_out;
+
+				call_response_body_handler(insp, buf, n, user);
 			}
 		} while (retval != Z_STREAM_END && streamp->avail_in > 0);
 	}
