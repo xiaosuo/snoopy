@@ -21,6 +21,7 @@
 #include "flow.h"
 #include <assert.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <stdbool.h>
 #include <zlib.h>
@@ -210,24 +211,27 @@ enum {
 	MINOR_STATE_CRLF,
 };
 
+enum {
+	HTTP_CE_NONE,
+	HTTP_CE_GZIP,
+	HTTP_CE_DEFLATE,
+};
+
 struct http_inspect_ctx_common {
 	int			state;
 	int			minor_state;
 	unsigned long long	body_len;
 	int			line_len;
-	bool			is_chunked;
+	int			is_chunked	: 1;
+	int			ce		: 2;
+	int			ce_end		: 1;
 	z_streamp		streamp;
-	char			line[HTTP_LINE_SIZE];
+	char			line[HTTP_LINE_SIZE]; /* it must be the last */
 };
 
 static void http_inspect_ctx_common_init(struct http_inspect_ctx_common *c)
 {
-	c->state = HTTP_STATE_START_LINE;
-	c->minor_state = MINOR_STATE_INIT;
-	c->body_len = 0;
-	c->line_len = 0;
-	c->is_chunked = false;
-	c->streamp = NULL;
+	memset(c, 0, offsetof(struct http_inspect_ctx_common, line));
 }
 
 static void http_inspect_ctx_common_reset(struct http_inspect_ctx_common *c)
@@ -399,7 +403,7 @@ static int http_parse_header_field(http_inspector_t *insp,
 		 */
 		/* All transfer-coding values are case-insensitive */
 		if (strcasecmp(fv, "chunked") == 0)
-			c->is_chunked = true;
+			c->is_chunked = 1;
 	} else if (strcasecmp(hdr, "Content-Encoding") == 0) {
 		/*
 		 * Content-Encoding  = "Content-Encoding" ":" 1#content-coding
@@ -418,22 +422,17 @@ static int http_parse_header_field(http_inspector_t *insp,
 			c->streamp = NULL;
 		}
 		if (strcasecmp(fv, "gzip") == 0 ||
-		    strcasecmp(fv, "x-gzip") == 0 ||
-		    strcasecmp(fv, "deflate") == 0) {
-			c->streamp = calloc(1, sizeof(z_stream));
-			if (!c->streamp)
-				goto err;
-			if (inflateInit2(c->streamp, MAX_WBITS + 32) != Z_OK)
-				goto err2;
-		}
+		    strcasecmp(fv, "x-gzip") == 0)
+			c->ce = HTTP_CE_GZIP;
+		else if (strcasecmp(fv, "deflate") == 0)
+			c->ce = HTTP_CE_DEFLATE;
+		else
+			c->ce = HTTP_CE_NONE;
 	}
 
 	call_header_field_handler(insp, dir, hdr, fv, user);
 
 	return 0;
-err2:
-	free(c->streamp);
-	c->streamp = NULL;
 err:
 	return -1;
 }
@@ -533,25 +532,35 @@ static int decode_res_content(http_inspector_t *insp,
 		struct http_inspect_ctx_common *c, const unsigned char *data,
 		int len, void *user)
 {
-	if (!c->streamp) {
+	switch (c->ce) {
+	case HTTP_CE_NONE:
 		call_response_body_handler(insp, data, len, user);
-	} else {
+		break;
+	case HTTP_CE_GZIP:
+	case HTTP_CE_DEFLATE: {
 		unsigned char buf[HTTP_DECODE_BUF_SIZE];
 		z_streamp streamp = c->streamp;
-		int retval;
 
-		/* the stream is end */
-		if (streamp->avail_in != 0)
-			goto out;
+		if (c->ce_end)
+			break;
+		if (!streamp) {
+			c->streamp = calloc(1, sizeof(z_stream));
+			if (!c->streamp)
+				goto err;
+			if (inflateInit2(c->streamp, MAX_WBITS + 32) != Z_OK)
+				goto err2;
+			streamp = c->streamp;
+		}
 		streamp->next_in = (unsigned char *)data;
 		streamp->avail_in = len;
 		do {
 			streamp->next_out = buf;
 			streamp->avail_out = sizeof(buf);
-			retval = inflate(streamp, Z_NO_FLUSH);
-			switch (retval) {
+			switch (inflate(streamp, Z_NO_FLUSH)) {
 			case Z_OK:
+				break;
 			case Z_STREAM_END:
+				c->ce_end = 1;
 				break;
 			default:
 				goto err;
@@ -562,10 +571,23 @@ static int decode_res_content(http_inspector_t *insp,
 
 				call_response_body_handler(insp, buf, n, user);
 			}
-		} while (retval != Z_STREAM_END && streamp->avail_in > 0);
+			if (c->ce_end) {
+				inflateEnd(c->streamp);
+				free(c->streamp);
+				c->streamp = NULL;
+				break;
+			}
+		} while (streamp->avail_in > 0);
+		break;
 	}
-out:
+	default:
+		abort();
+	}
+
 	return 0;
+err2:
+	free(c->streamp);
+	c->streamp = NULL;
 err:
 	return -1;
 }
