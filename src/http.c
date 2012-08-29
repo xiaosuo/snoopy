@@ -222,9 +222,9 @@ struct http_inspect_ctx_common {
 	int			minor_state;
 	unsigned long long	body_len;
 	int			line_len;
-	int			is_chunked	: 1;
-	int			ce		: 2;
-	int			ce_end		: 1;
+	unsigned int		is_chunked	: 1;
+	unsigned int		ce		: 2;
+	unsigned int		ce_end		: 1;
 	z_streamp		streamp;
 	char			line[HTTP_LINE_SIZE]; /* it must be the last */
 };
