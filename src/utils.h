@@ -32,4 +32,6 @@ void *memmem(const void *haystack, size_t haystacklen,
 		const void *needle, size_t needlelen);
 #endif
 
+#define strncasecmp_c(str1, str2) strncasecmp(str1, str2, sizeof(str2) - 1)
+
 #endif /* __UTILS_H */

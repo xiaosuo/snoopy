@@ -468,7 +468,9 @@ static void parse_res_hdr_fild(const char *name, const char *value, void *user)
 		 * The type, subtype, and parameter attribute names are case-
 		 * insensitive.
 		 */
-		if (strncasecmp(value, "text/", 5) != 0)
+		if (strncasecmp_c(value, "text/") != 0 &&
+		    strncasecmp_c(value, "application/xhtml+xml") != 0 &&
+		    strncasecmp_c(value, "application/xml") != 0)
 			r->is_non_text_res = true;
 	} else if (strcasecmp(name, "Content-Range") == 0) {
 		const char *ptr;
