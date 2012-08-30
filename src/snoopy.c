@@ -110,7 +110,7 @@ static void http_req_free(struct http_req *r)
 	free(r);
 }
 
-struct snoopy_context {
+struct snoopy_ctx {
 	rule_list_t	*rule_list;
 	http_parser_t	*pasr;
 	patn_list_t	*patn_list;
@@ -118,17 +118,17 @@ struct snoopy_context {
 	bool		inspect_all;
 };
 
-struct flow_context {
+struct flow_ctx {
 	struct http_req		*req_head;
 	struct http_req		**req_ptail;
 	struct http_req		*req_part;
 	patn_sch_ctx_t		*sch_ctx;
 	http_parse_ctx_t	*http_ctx;
 	bool			stop_inspect;
-	struct snoopy_context	*snoopy;
+	struct snoopy_ctx	*snoopy;
 };
 
-static void flow_context_free_data(struct flow_context *fc)
+static void flow_ctx_free_data(struct flow_ctx *fc)
 {
 	struct http_req *r;
 
@@ -144,15 +144,15 @@ static void flow_context_free_data(struct flow_context *fc)
 		http_parse_ctx_free(fc->http_ctx);
 }
 
-static void flow_context_free(struct flow_context *fc)
+static void flow_ctx_free(struct flow_ctx *fc)
 {
-	flow_context_free_data(fc);
+	flow_ctx_free_data(fc);
 	free(fc);
 }
 
-static struct flow_context *flow_context_alloc(struct snoopy_context *snoopy)
+static struct flow_ctx *flow_ctx_alloc(struct snoopy_ctx *snoopy)
 {
-	struct flow_context *fc = calloc(1, sizeof(*fc));
+	struct flow_ctx *fc = calloc(1, sizeof(*fc));
 
 	if (!fc)
 		goto err;
@@ -164,11 +164,11 @@ err:
 	return NULL;
 }
 
-static void flow_context_reset(struct flow_context *fc)
+static void flow_ctx_reset(struct flow_ctx *fc)
 {
-	struct snoopy_context *snoopy = fc->snoopy;
+	struct snoopy_ctx *snoopy = fc->snoopy;
 
-	flow_context_free_data(fc);
+	flow_ctx_free_data(fc);
 	memset(fc, 0, sizeof(*fc));
 	fc->req_ptail = &fc->req_head;
 	fc->snoopy = snoopy;
@@ -177,30 +177,30 @@ static void flow_context_reset(struct flow_context *fc)
 #define FLOW_TAG_ID	0
 
 struct http_user {
-	struct flow_context	*fc;
+	struct flow_ctx		*fc;
 	struct ip		*ip;
 	const struct timeval	*ts;
 };
 
 struct flow_user {
-	struct snoopy_context	*sc;
+	struct snoopy_ctx	*sc;
 	struct ip		*ip;
 };
 
 static void stream_inspect(flow_t *f, int dir, const struct timeval *ts,
 		const unsigned char *data, int len, void *user)
 {
-	struct flow_context *fc;
+	struct flow_ctx *fc;
 	struct flow_user *fu = user;
 	struct http_user hu;
 
 	fc = flow_get_tag(f, FLOW_TAG_ID);
 	if (!fc) {
-		fc = flow_context_alloc(fu->sc);
+		fc = flow_ctx_alloc(fu->sc);
 		if (!fc)
 			goto err;
 		if (flow_add_tag(f, FLOW_TAG_ID, fc,
-				(void (*)(void *))flow_context_free))
+				(void (*)(void *))flow_ctx_free))
 			goto err2;
 	}
 
@@ -215,14 +215,14 @@ static void stream_inspect(flow_t *f, int dir, const struct timeval *ts,
 	if (http_parse(fu->sc->pasr, fc->http_ctx, dir, data, len, &hu) ||
 	    fc->stop_inspect) {
 stop_inspect:
-		flow_context_reset(fc);
+		flow_ctx_reset(fc);
 		fc->stop_inspect = true;
 		goto err;
 	}
 
 	return;
 err2:
-	flow_context_free(fc);
+	flow_ctx_free(fc);
 err:
 	return;
 }
@@ -256,7 +256,7 @@ struct pppoe_ses_hdr {
 	be16_t			proto;
 } __attribute__((packed));
 
-static void ip_handler(struct snoopy_context *sc, const struct timeval *ts,
+static void ip_handler(struct snoopy_ctx *sc, const struct timeval *ts,
 		const uint8_t *bytes, int len)
 {
 	struct ip *iph;
@@ -313,9 +313,8 @@ err:
 	return;
 }
 
-static void ethernet_demux(struct snoopy_context *sc,
-		const struct timeval *ts, const uint8_t *bytes, int len,
-		int proto)
+static void ethernet_demux(struct snoopy_ctx *sc, const struct timeval *ts,
+		const uint8_t *bytes, int len, int proto)
 {
 	struct vlan_hdr *vlan;
 	struct pppoe_ses_hdr *pppoe_ses;
@@ -373,9 +372,8 @@ static void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 	if (h->len < sizeof(*eth))
 		goto err;
 	eth = (struct ether_header *)bytes;
-	ethernet_demux((struct snoopy_context *)user, &h->ts,
-			bytes + sizeof(*eth), h->len - sizeof(*eth),
-			ntohs(eth->ether_type));
+	ethernet_demux((struct snoopy_ctx *)user, &h->ts, bytes + sizeof(*eth),
+			h->len - sizeof(*eth), ntohs(eth->ether_type));
 err:
 	return;
 }
@@ -390,9 +388,8 @@ static void linux_sll_handler(u_char *user, const struct pcap_pkthdr *h,
 	if (h->len < sizeof(*sll))
 		goto err;
 	sll = (struct sll_header *)bytes;
-	ethernet_demux((struct snoopy_context *)user, &h->ts,
-			bytes + sizeof(*sll), h->len - sizeof(*sll),
-			ntohs(sll->sll_protocol));
+	ethernet_demux((struct snoopy_ctx *)user, &h->ts, bytes + sizeof(*sll),
+			h->len - sizeof(*sll), ntohs(sll->sll_protocol));
 err:
 	return;
 }
@@ -401,7 +398,7 @@ static void save_path(const char *method, const char *path,
 		const char *http_version, void *user)
 {
 	struct http_user *hu = user;
-	struct flow_context *fc = hu->fc;
+	struct flow_ctx *fc = hu->fc;
 
 	if (!fc->req_part && !(fc->req_part = http_req_alloc()))
 		goto err;
@@ -417,7 +414,7 @@ err:
 static void save_host(const char *name, const char *value, void *user)
 {
 	struct http_user *hu = user;
-	struct flow_context *fc = hu->fc;
+	struct flow_ctx *fc = hu->fc;
 	struct http_req *r;
 
 	if (!(r = fc->req_part))
@@ -435,7 +432,7 @@ err:
 static void end_req(void *user)
 {
 	struct http_user *hu = user;
-	struct flow_context *fc = hu->fc;
+	struct flow_ctx *fc = hu->fc;
 	struct http_req *r;
 
 	if (!(r = fc->req_part))
@@ -450,7 +447,7 @@ err:
 static void parse_res_hdr_fild(const char *name, const char *value, void *user)
 {
 	struct http_user *hu = user;
-	struct flow_context *fc = hu->fc;
+	struct flow_ctx *fc = hu->fc;
 	struct http_req *r;
 
 	if (!name || !(r = fc->req_head))
@@ -502,13 +499,13 @@ struct patn_user {
 	const struct timeval	*ts;
 	struct ip		*ip;
 	struct http_req		*r;
-	struct flow_context	*fc;
+	struct flow_ctx		*fc;
 };
 
 static int log_keyword(const char *k, void *user)
 {
 	struct patn_user *pu = user;
-	struct flow_context *fc = pu->fc;
+	struct flow_ctx *fc = pu->fc;
 	int r;
 
 	r = log_write(pu->ts, pu->ip->ip_dst.s_addr,
@@ -526,7 +523,7 @@ static int log_keyword(const char *k, void *user)
 static void inspect_body(const unsigned char *data, int len, void *user)
 {
 	struct http_user *hu = user;
-	struct flow_context *fc = hu->fc;
+	struct flow_ctx *fc = hu->fc;
 	struct http_req *r;
 
 	if (!(r = fc->req_head))
@@ -555,7 +552,7 @@ err:
 static void end_res(void *user)
 {
 	struct http_user *hu = user;
-	struct flow_context *fc = hu->fc;
+	struct flow_ctx *fc = hu->fc;
 	struct http_req *r;
 
 	if (!(r = fc->req_head))
@@ -605,7 +602,7 @@ int main(int argc, char *argv[])
 	int snap_len = 0;
 	char err_buf[PCAP_ERRBUF_SIZE];
 	pcap_handler handler;
-	struct snoopy_context ctx = { 0 };
+	struct snoopy_ctx ctx = { 0 };
 	const char *rule_fn = SNOOPY_RULE_FN;
 	const char *key_fn = SNOOPY_KEY_FN;
 	const char *log_fn = SNOOPY_LOG_FN;
@@ -664,7 +661,7 @@ int main(int argc, char *argv[])
 	if (!file && !nic)
 		die("FILE or NIC must be given\n");
 
-	/* initialize snoopy context */
+	/* initialize snoopy ctx */
 	if (flow_init())
 		die("failed to initialize flow service\n");
 	if (log_open(log_fn))
