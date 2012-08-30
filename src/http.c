@@ -265,6 +265,62 @@ err:
 	return -1;
 }
 
+/*
+       LWS            = [CRLF] 1*( SP | HT )
+       CRLF           = CR LF
+       CR             = <US-ASCII CR, carriage return (13)>
+       LF             = <US-ASCII LF, linefeed (10)>
+       SP             = <US-ASCII SP, space (32)>
+       HT             = <US-ASCII HT, horizontal-tab (9)>
+ */
+static char *skip_lws(char *s)
+{
+	enum {
+		SKIP_LWS_STATE_INIT,
+		SKIP_LWS_STATE_CR,
+		SKIP_LWS_STATE_CRLF,
+	} state = SKIP_LWS_STATE_INIT;
+
+	while (1) {
+		switch (state) {
+		case SKIP_LWS_STATE_INIT:
+			switch (*s) {
+			case '\r':
+				state = SKIP_LWS_STATE_CR;
+				break;
+			case ' ':
+			case '\t':
+				break;
+			default:
+				return s;
+			}
+			break;
+		case SKIP_LWS_STATE_CR:
+			switch (*s) {
+			case '\n':
+				state = SKIP_LWS_STATE_CRLF;
+				break;
+			default:
+				return s - 1;
+			}
+			break;
+		case SKIP_LWS_STATE_CRLF:
+			switch (*s) {
+			case ' ':
+			case '\t':
+				state = SKIP_LWS_STATE_INIT;
+				break;
+			default:
+				return s - 2;
+			}
+			break;
+		default:
+			abort();
+		}
+		s++;
+	}
+}
+
 /* 
        message-header = field-name ":" [ field-value ]
        field-name     = token
@@ -277,6 +333,7 @@ err:
                       | "," | ";" | ":" | "\" | <">
                       | "/" | "[" | "]" | "?" | "="
                       | "{" | "}" | SP | HT
+       TEXT           = <any OCTET except CTLs, but including LWS>
        CHAR           = <any US-ASCII character (octets 0 - 127)>
        CTL            = <any US-ASCII control character
                         (octets 0 - 31) and DEL (127)>
@@ -284,11 +341,7 @@ err:
        qdtext         = <any TEXT except <">>
        quoted-pair    = "\" CHAR
        OCTET          = <any 8-bit sequence of data>
-       SP             = <US-ASCII SP, space (32)>
-       HT             = <US-ASCII HT, horizontal-tab (9)>
        <">            = <US-ASCII double-quote mark (34)>
-       CRLF           = CR LF
-       LWS            = [CRLF] 1*( SP | HT )
 */
 static int http_parse_header_field(http_parser_t *pasr,
 		struct http_parse_ctx_common *c, int dir, char *hdr,
@@ -299,8 +352,7 @@ static int http_parse_header_field(http_parser_t *pasr,
 	if (!fv)
 		goto err;
 	*fv++ = '\0';
-	while (*fv == ' ' || *fv == '\t')
-		fv++;
+	fv = skip_lws(fv);
 
 	if (strcasecmp(hdr, "Content-Length") == 0) {
 		c->body_len = strtoull(fv, NULL, 0);
