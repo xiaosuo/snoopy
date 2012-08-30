@@ -26,73 +26,73 @@
 #include <stdbool.h>
 #include <zlib.h>
 
-struct http_inspector {
+struct http_parser {
 	http_request_line_handler	request_line;
 	http_header_field_handler	header_field[PKT_DIR_NUM];
 	http_body_handler		body[PKT_DIR_NUM];
 	http_msg_end_handler		msg_end[PKT_DIR_NUM];
 };
 
-http_inspector_t *http_inspector_alloc(void)
+http_parser_t *http_parser_alloc(void)
 {
-	return calloc(1, sizeof(struct http_inspector));
+	return calloc(1, sizeof(struct http_parser));
 }
 
-void http_inspector_free(http_inspector_t *insp)
+void http_parser_free(http_parser_t *pasr)
 {
-	free(insp);
+	free(pasr);
 }
 
-void http_inspector_set_request_line_handler(http_inspector_t *insp,
+void http_parser_set_request_line_handler(http_parser_t *pasr,
 		http_request_line_handler h)
 {
-	insp->request_line = h;
+	pasr->request_line = h;
 }
 
-void http_inspector_set_header_field_handler(http_inspector_t *insp, int dir,
+void http_parser_set_header_field_handler(http_parser_t *pasr, int dir,
 		http_header_field_handler h)
 {
-	insp->header_field[dir] = h;
+	pasr->header_field[dir] = h;
 }
 
-void http_inspector_set_body_handler(http_inspector_t *insp, int dir,
+void http_parser_set_body_handler(http_parser_t *pasr, int dir,
 		http_body_handler h)
 {
-	insp->body[dir] = h;
+	pasr->body[dir] = h;
 }
 
-void http_inspector_set_msg_end_handler(http_inspector_t *insp, int dir,
+void http_parser_set_msg_end_handler(http_parser_t *pasr, int dir,
 		http_msg_end_handler h)
 {
-	insp->msg_end[dir] = h;
+	pasr->msg_end[dir] = h;
 }
 
-static void call_request_line_handler(http_inspector_t *insp,
+static void call_request_line_handler(http_parser_t *pasr,
 		const char *method, const char *path, const char *http_version,
 		void *user)
 {
-	if (insp->request_line)
-		insp->request_line(method, path, http_version, user);
+	if (pasr->request_line)
+		pasr->request_line(method, path, http_version, user);
 }
 
-static void call_header_field_handler(http_inspector_t *insp, int dir,
+static void call_header_field_handler(http_parser_t *pasr, int dir,
 		const char *name, const char *value, void *user)
 {
-	if (insp->header_field[dir])
-		insp->header_field[dir](name, value, user);
+	if (pasr->header_field[dir])
+		pasr->header_field[dir](name, value, user);
 }
 
-static void call_body_handler(http_inspector_t *insp, int dir,
+static void call_body_handler(http_parser_t *pasr, int dir,
 		const unsigned char *data, int len, void *user)
 {
-	if (insp->body[dir])
-		insp->body[dir](data, len, user);
+	if (pasr->body[dir])
+		pasr->body[dir](data, len, user);
 }
 
-static void call_msg_end_handler(http_inspector_t *insp, int dir, void *user)
+static void call_msg_end_handler(http_parser_t *pasr, int dir, void *user)
 {
-	if (insp->msg_end[dir])
-		insp->msg_end[dir](user);
+	if (pasr->msg_end[dir])
+		pasr->msg_end[dir](user);
 }
 
 /*
@@ -127,7 +127,7 @@ enum {
 	HTTP_CE_DEFLATE,
 };
 
-struct http_inspect_ctx_common {
+struct http_parse_ctx_common {
 	int			state;
 	int			minor_state;
 	unsigned long long	body_len;
@@ -139,21 +139,21 @@ struct http_inspect_ctx_common {
 	char			line[HTTP_LINE_SIZE]; /* it must be the last */
 };
 
-static void http_inspect_ctx_common_init(struct http_inspect_ctx_common *c)
+static void http_parse_ctx_common_init(struct http_parse_ctx_common *c)
 {
-	memset(c, 0, offsetof(struct http_inspect_ctx_common, line));
+	memset(c, 0, offsetof(struct http_parse_ctx_common, line));
 }
 
-static void http_inspect_ctx_common_reset(struct http_inspect_ctx_common *c)
+static void http_parse_ctx_common_reset(struct http_parse_ctx_common *c)
 {
 	if (c->streamp) {
 		inflateEnd(c->streamp);
 		free(c->streamp);
 	}
-	http_inspect_ctx_common_init(c);
+	http_parse_ctx_common_init(c);
 }
 
-static int http_inspect_ctx_common_add_line(struct http_inspect_ctx_common *c,
+static int http_parse_ctx_common_add_line(struct http_parse_ctx_common *c,
 		const unsigned char *str, int len)
 {
 	if (c->line_len + len >= sizeof(c->line))
@@ -165,23 +165,23 @@ static int http_inspect_ctx_common_add_line(struct http_inspect_ctx_common *c,
 	return 0;
 }
 
-struct http_inspect_ctx {
-	struct http_inspect_ctx_common	common[PKT_DIR_NUM];
+struct http_parse_ctx {
+	struct http_parse_ctx_common	common[PKT_DIR_NUM];
 };
 
-http_inspect_ctx_t *http_inspect_ctx_alloc(void)
+http_parse_ctx_t *http_parse_ctx_alloc(void)
 {
-	struct http_inspect_ctx *c = malloc(sizeof(*c));
+	struct http_parse_ctx *c = malloc(sizeof(*c));
 
 	if (!c)
 		return NULL;
-	http_inspect_ctx_common_init(&c->common[PKT_DIR_C2S]);
-	http_inspect_ctx_common_init(&c->common[PKT_DIR_S2C]);
+	http_parse_ctx_common_init(&c->common[PKT_DIR_C2S]);
+	http_parse_ctx_common_init(&c->common[PKT_DIR_S2C]);
 
 	return c;
 }
 
-void http_inspect_ctx_free(http_inspect_ctx_t *ctx)
+void http_parse_ctx_free(http_parse_ctx_t *ctx)
 {
 	int dir;
 
@@ -199,8 +199,7 @@ void http_inspect_ctx_free(http_inspect_ctx_t *ctx)
        HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
        DIGIT          = <any US-ASCII digit "0".."9">
 */
-static int http_parse_request_line(http_inspector_t *insp,
-		char *line, void *user)
+static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 {
 	char *path = strchr(line, ' ');
 	char *ver;
@@ -213,7 +212,7 @@ static int http_parse_request_line(http_inspector_t *insp,
 		goto err;
 	*ver++ = '\0';
 
-	call_request_line_handler(insp, line, path, ver, user);
+	call_request_line_handler(pasr, line, path, ver, user);
 
 	return 0;
 err:
@@ -223,7 +222,7 @@ err:
 /*
        Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
 */
-static int http_get_line(struct http_inspect_ctx_common *c,
+static int http_get_line(struct http_parse_ctx_common *c,
 		bool *end, const unsigned char *data, int len, void *user)
 {
 	int n;
@@ -236,7 +235,7 @@ static int http_get_line(struct http_inspect_ctx_common *c,
 		if (ptr) {
 			ptr += 2;
 			n = ptr - data;
-			if (http_inspect_ctx_common_add_line(c, data, n - 2))
+			if (http_parse_ctx_common_add_line(c, data, n - 2))
 				goto err;
 			*end = true;
 			break;
@@ -244,7 +243,7 @@ static int http_get_line(struct http_inspect_ctx_common *c,
 		if (data[len - 1] == '\r')
 			c->minor_state = MINOR_STATE_CR;
 		n = len;
-		if (http_inspect_ctx_common_add_line(c, data, n))
+		if (http_parse_ctx_common_add_line(c, data, n))
 			goto err;
 		break;
 	case MINOR_STATE_CR:
@@ -291,8 +290,8 @@ err:
        CRLF           = CR LF
        LWS            = [CRLF] 1*( SP | HT )
 */
-static int http_parse_header_field(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, int dir, char *hdr,
+static int http_parse_header_field(http_parser_t *pasr,
+		struct http_parse_ctx_common *c, int dir, char *hdr,
 		void *user)
 {
 	char *fv = strchr(hdr, ':');
@@ -340,15 +339,15 @@ static int http_parse_header_field(http_inspector_t *insp,
 			c->ce = HTTP_CE_NONE;
 	}
 
-	call_header_field_handler(insp, dir, hdr, fv, user);
+	call_header_field_handler(pasr, dir, hdr, fv, user);
 
 	return 0;
 err:
 	return -1;
 }
 
-static int http_parse_msg_hdr(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, bool *end, int dir,
+static int http_parse_msg_hdr(http_parser_t *pasr,
+		struct http_parse_ctx_common *c, bool *end, int dir,
 		const unsigned char *data, int len, void *user)
 {
 	int n;
@@ -366,8 +365,7 @@ static int http_parse_msg_hdr(http_inspector_t *insp,
 				break;
 			}
 			if (ptr == data + len) {
-				if (http_inspect_ctx_common_add_line(c, data,
-								     n))
+				if (http_parse_ctx_common_add_line(c, data, n))
 					goto err;
 				c->minor_state = MINOR_STATE_CRLF;
 				break;
@@ -375,14 +373,13 @@ static int http_parse_msg_hdr(http_inspector_t *insp,
 			if (*ptr == ' ' || *ptr == '\t') {
 				/* LWS */
 				n++;
-				if (http_inspect_ctx_common_add_line(c, data,
-								     n))
+				if (http_parse_ctx_common_add_line(c, data, n))
 					goto err;
 				break;
 			}
-			if (http_inspect_ctx_common_add_line(c, data, n - 2))
+			if (http_parse_ctx_common_add_line(c, data, n - 2))
 				goto err;
-			if (http_parse_header_field(insp, c, dir, c->line,
+			if (http_parse_header_field(pasr, c, dir, c->line,
 					user))
 				goto err;
 			c->line_len = 0;
@@ -391,7 +388,7 @@ static int http_parse_msg_hdr(http_inspector_t *insp,
 		if (data[len - 1] == '\r')
 			c->minor_state = MINOR_STATE_CR;
 		n = len;
-		if (http_inspect_ctx_common_add_line(c, data, n))
+		if (http_parse_ctx_common_add_line(c, data, n))
 			goto err;
 		break;
 	case MINOR_STATE_CR:
@@ -404,7 +401,7 @@ static int http_parse_msg_hdr(http_inspector_t *insp,
 			}
 			c->minor_state = MINOR_STATE_CRLF;
 			n = 1;
-			if (http_inspect_ctx_common_add_line(c, data, n))
+			if (http_parse_ctx_common_add_line(c, data, n))
 				goto err;
 			break;
 		}
@@ -416,14 +413,14 @@ static int http_parse_msg_hdr(http_inspector_t *insp,
 		if (data[0] == ' ' || data[0] == '\t') {
 			/* LWS */
 			n = 1;
-			if (http_inspect_ctx_common_add_line(c, data, n))
+			if (http_parse_ctx_common_add_line(c, data, n))
 				goto err;
 			break;
 		}
 		c->line_len -= 2;
 		c->line[c->line_len] = '\0';
 		n = 0;
-		if (http_parse_header_field(insp, c, dir, c->line, user))
+		if (http_parse_header_field(pasr, c, dir, c->line, user))
 			goto err;
 		c->line_len = 0;
 		break;
@@ -438,13 +435,12 @@ err:
 
 #define HTTP_DECODE_BUF_SIZE	4096
 
-static int decode_content(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, int dir,
-		const unsigned char *data, int len, void *user)
+static int decode_content(http_parser_t *pasr, struct http_parse_ctx_common *c,
+		int dir, const unsigned char *data, int len, void *user)
 {
 	switch (c->ce) {
 	case HTTP_CE_NONE:
-		call_body_handler(insp, dir, data, len, user);
+		call_body_handler(pasr, dir, data, len, user);
 		break;
 	case HTTP_CE_GZIP:
 	case HTTP_CE_DEFLATE: {
@@ -479,7 +475,7 @@ static int decode_content(http_inspector_t *insp,
 			if (streamp->avail_out != sizeof(buf)) {
 				int n = sizeof(buf) - streamp->avail_out;
 
-				call_body_handler(insp, dir, buf, n, user);
+				call_body_handler(pasr, dir, buf, n, user);
 			}
 			if (c->ce_end) {
 				inflateEnd(c->streamp);
@@ -504,9 +500,8 @@ err:
 
 /* return -1 on fatal, and callers should not call it again.
  * return 0 if all the data is consumed or bufferd. */
-static int __http_inspect_data(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, int dir,
-		const unsigned char *data, int len, void *user)
+static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
+		int dir, const unsigned char *data, int len, void *user)
 {
 	int n;
 	bool end;
@@ -520,13 +515,13 @@ static int __http_inspect_data(http_inspector_t *insp,
 			break;
 		c->state = HTTP_STATE_MSG_HDR;
 		if (dir == PKT_DIR_C2S) {
-			if (http_parse_request_line(insp, c->line, user))
+			if (http_parse_request_line(pasr, c->line, user))
 				goto err;
 		}
 		c->line_len = 0;
 		break;
 	case HTTP_STATE_MSG_HDR:
-		n = http_parse_msg_hdr(insp, c, &end, dir, data, len, user);
+		n = http_parse_msg_hdr(pasr, c, &end, dir, data, len, user);
 		if (n < 0)
 			goto err;
 		if (!end)
@@ -535,8 +530,8 @@ static int __http_inspect_data(http_inspector_t *insp,
 			c->state = HTTP_STATE_MSG_CHUNK_SIZE;
 			c->line_len = 0;
 		} else if (c->body_len == 0) {
-			http_inspect_ctx_common_reset(c);
-			call_msg_end_handler(insp, dir, user);
+			http_parse_ctx_common_reset(c);
+			call_msg_end_handler(pasr, dir, user);
 		} else {
 			c->state = HTTP_STATE_MSG_BODY;
 			c->line_len = 0;
@@ -546,11 +541,11 @@ static int __http_inspect_data(http_inspector_t *insp,
 		assert(c->body_len > 0);
 		n = MIN(len, c->body_len);
 		c->body_len -= n;
-		if (decode_content(insp, c, dir, data, n, user))
+		if (decode_content(pasr, c, dir, data, n, user))
 			goto err;
 		if (c->body_len == 0) {
-			http_inspect_ctx_common_reset(c);
-			call_msg_end_handler(insp, dir, user);
+			http_parse_ctx_common_reset(c);
+			call_msg_end_handler(pasr, dir, user);
 		}
 		break;
 /*
@@ -587,7 +582,7 @@ static int __http_inspect_data(http_inspector_t *insp,
 		assert(c->body_len > 0);
 		n = MIN(len, c->body_len);
 		c->body_len -= n;
-		if (decode_content(insp, c, dir, data, n, user))
+		if (decode_content(pasr, c, dir, data, n, user))
 			goto err;
 		if (c->body_len == 0)
 			c->state = HTTP_STATE_MSG_CHUNK_CRLF;
@@ -603,13 +598,13 @@ static int __http_inspect_data(http_inspector_t *insp,
 		c->state = HTTP_STATE_MSG_CHUNK_SIZE;
 		break;
 	case HTTP_STATE_MSG_CHUNK_TRAILER:
-		n = http_parse_msg_hdr(insp, c, &end, dir, data, len, user);
+		n = http_parse_msg_hdr(pasr, c, &end, dir, data, len, user);
 		if (n < 0)
 			goto err;
 		if (!end)
 			break;
-		http_inspect_ctx_common_reset(c);
-		call_msg_end_handler(insp, dir, user);
+		http_parse_ctx_common_reset(c);
+		call_msg_end_handler(pasr, dir, user);
 		break;
 	default:
 		abort();
@@ -620,15 +615,15 @@ err:
 	return -1;
 }
 
-int http_inspect_data(http_inspector_t *insp, http_inspect_ctx_t *ctx, int dir,
+int http_parse(http_parser_t *pasr, http_parse_ctx_t *ctx, int dir,
 		const unsigned char *data, int len, void *user)
 {
-	struct http_inspect_ctx_common *c;
+	struct http_parse_ctx_common *c;
 	int n;
 
 	c = &ctx->common[dir];
 	while (len > 0) {
-		n = __http_inspect_data(insp, c, dir, data, len, user);
+		n = __http_parse(pasr, c, dir, data, len, user);
 		if (n < 0)
 			return -1;
 		data += n;
@@ -683,33 +678,27 @@ int main(void)
 			"\r\n"
 			" 1234\n";
 	int i;
-	http_inspector_t *insp;
-	http_inspect_ctx_t *c;
+	http_parser_t *pasr;
+	http_parse_ctx_t *c;
 	int off = 0;
 
-	insp = http_inspector_alloc();
-	assert(insp);
-	http_inspector_set_request_line_handler(insp, print_path);
-	http_inspector_set_header_field_handler(insp, PKT_DIR_C2S, print_hdr);
-	http_inspector_set_body_handler(insp, PKT_DIR_S2C, print_body);
+	pasr = http_parser_alloc();
+	assert(pasr);
+	http_parser_set_request_line_handler(pasr, print_path);
+	http_parser_set_header_field_handler(pasr, PKT_DIR_C2S, print_hdr);
+	http_parser_set_body_handler(pasr, PKT_DIR_S2C, print_body);
 
-	c = http_inspect_ctx_alloc();
+	c = http_parse_ctx_alloc();
 	assert(c);
 
-	assert(http_inspect_data(insp, c, PKT_DIR_C2S, req, strlen(req),
-			NULL) == 0);
-	assert(http_inspect_data(insp, c, PKT_DIR_S2C, res, strlen(res),
-			NULL) == 0);
-	for (i = 0; i < strlen(req); i++) {
-		assert(http_inspect_data(insp, c, PKT_DIR_C2S, req + i, 1,
-				NULL) == 0);
-	}
-	for (i = 0; i < strlen(res); i++) {
-		assert(http_inspect_data(insp, c, PKT_DIR_S2C, res + i, 1,
-				&off) == 0);
-	}
-	http_inspector_free(insp);
-	http_inspect_ctx_free(c);
+	assert(http_parse(pasr, c, PKT_DIR_C2S, req, strlen(req), NULL) == 0);
+	assert(http_parse(pasr, c, PKT_DIR_S2C, res, strlen(res), NULL) == 0);
+	for (i = 0; i < strlen(req); i++)
+		assert(http_parse(pasr, c, PKT_DIR_C2S, req + i, 1, NULL) == 0);
+	for (i = 0; i < strlen(res); i++)
+		assert(http_parse(pasr, c, PKT_DIR_S2C, res + i, 1, &off) == 0);
+	http_parser_free(pasr);
+	http_parse_ctx_free(c);
 
 	return EXIT_SUCCESS;
 }

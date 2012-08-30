@@ -111,11 +111,11 @@ static void http_req_free(struct http_req *r)
 }
 
 struct snoopy_context {
-	rule_list_t		*rule_list;
-	http_inspector_t	*insp;
-	patn_list_t		*patn_list;
-	bool			is_lazy;
-	bool			inspect_all;
+	rule_list_t	*rule_list;
+	http_parser_t	*pasr;
+	patn_list_t	*patn_list;
+	bool		is_lazy;
+	bool		inspect_all;
 };
 
 struct flow_context {
@@ -123,7 +123,7 @@ struct flow_context {
 	struct http_req		**req_ptail;
 	struct http_req		*req_part;
 	patn_sch_ctx_t		*sch_ctx;
-	http_inspect_ctx_t	*http_ctx;
+	http_parse_ctx_t	*http_ctx;
 	bool			stop_inspect;
 	struct snoopy_context	*snoopy;
 };
@@ -141,7 +141,7 @@ static void flow_context_free_data(struct flow_context *fc)
 	if (fc->sch_ctx)
 		patn_sch_ctx_free(fc->sch_ctx);
 	if (fc->http_ctx)
-		http_inspect_ctx_free(fc->http_ctx);
+		http_parse_ctx_free(fc->http_ctx);
 }
 
 static void flow_context_free(struct flow_context *fc)
@@ -210,10 +210,10 @@ static void stream_inspect(flow_t *f, int dir, const struct timeval *ts,
 	hu.fc = fc;
 	hu.ip = fu->ip;
 	hu.ts = ts;
-	if (!fc->http_ctx && !(fc->http_ctx = http_inspect_ctx_alloc()))
+	if (!fc->http_ctx && !(fc->http_ctx = http_parse_ctx_alloc()))
 		goto stop_inspect;
-	if (http_inspect_data(fu->sc->insp, fc->http_ctx, dir, data, len,
-			&hu) || fc->stop_inspect) {
+	if (http_parse(fu->sc->pasr, fc->http_ctx, dir, data, len, &hu) ||
+	    fc->stop_inspect) {
 stop_inspect:
 		flow_context_reset(fc);
 		fc->stop_inspect = true;
@@ -672,17 +672,16 @@ int main(int argc, char *argv[])
 	ctx.rule_list = rule_list_load(rule_fn);
 	if (!ctx.rule_list)
 		die("failed to load rules in %s\n", rule_fn);
-	ctx.insp = http_inspector_alloc();
-	if (!ctx.insp)
-		die("failed to allocate a http inspector\n");
-	http_inspector_set_request_line_handler(ctx.insp, save_path);
-	http_inspector_set_header_field_handler(ctx.insp, PKT_DIR_C2S,
-			save_host);
-	http_inspector_set_header_field_handler(ctx.insp, PKT_DIR_S2C,
+	ctx.pasr = http_parser_alloc();
+	if (!ctx.pasr)
+		die("failed to allocate a http parser\n");
+	http_parser_set_request_line_handler(ctx.pasr, save_path);
+	http_parser_set_header_field_handler(ctx.pasr, PKT_DIR_C2S, save_host);
+	http_parser_set_header_field_handler(ctx.pasr, PKT_DIR_S2C,
 			parse_res_hdr_fild);
-	http_inspector_set_body_handler(ctx.insp, PKT_DIR_S2C, inspect_body);
-	http_inspector_set_msg_end_handler(ctx.insp, PKT_DIR_C2S, end_req);
-	http_inspector_set_msg_end_handler(ctx.insp, PKT_DIR_S2C, end_res);
+	http_parser_set_body_handler(ctx.pasr, PKT_DIR_S2C, inspect_body);
+	http_parser_set_msg_end_handler(ctx.pasr, PKT_DIR_C2S, end_req);
+	http_parser_set_msg_end_handler(ctx.pasr, PKT_DIR_S2C, end_res);
 	ctx.patn_list = patn_list_load(key_fn);
 	if (!ctx.patn_list)
 		die("failed to load keywords in %s\n", key_fn);

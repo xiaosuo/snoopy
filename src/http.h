@@ -27,23 +27,23 @@ typedef void (*http_body_handler)(const unsigned char *data, int len,
 				  void *user);
 typedef void (*http_msg_end_handler)(void *user);
 
-typedef struct http_inspector http_inspector_t;
+typedef struct http_parser http_parser_t;
 
-http_inspector_t *http_inspector_alloc(void);
-void http_inspector_free(http_inspector_t *insp);
-void http_inspector_set_request_line_handler(http_inspector_t *insp,
+http_parser_t *http_parser_alloc(void);
+void http_parser_free(http_parser_t *pasr);
+void http_parser_set_request_line_handler(http_parser_t *pasr,
 		http_request_line_handler h);
-void http_inspector_set_header_field_handler(http_inspector_t *insp, int dir,
+void http_parser_set_header_field_handler(http_parser_t *pasr, int dir,
 		http_header_field_handler h);
-void http_inspector_set_body_handler(http_inspector_t *insp, int dir,
+void http_parser_set_body_handler(http_parser_t *pasr, int dir,
 		http_body_handler h);
-void http_inspector_set_msg_end_handler(http_inspector_t *insp, int dir,
+void http_parser_set_msg_end_handler(http_parser_t *pasr, int dir,
 		http_msg_end_handler h);
 
-typedef struct http_inspect_ctx http_inspect_ctx_t;
-http_inspect_ctx_t *http_inspect_ctx_alloc(void);
-void http_inspect_ctx_free(http_inspect_ctx_t *ctx);
-int http_inspect_data(http_inspector_t *insp, http_inspect_ctx_t *ctx, int dir,
+typedef struct http_parse_ctx http_parse_ctx_t;
+http_parse_ctx_t *http_parse_ctx_alloc(void);
+void http_parse_ctx_free(http_parse_ctx_t *ctx);
+int http_parse(http_parser_t *pasr, http_parse_ctx_t *ctx, int dir,
 		const unsigned char *data, int len, void *user);
 
 #endif /* __HTTP_H */
