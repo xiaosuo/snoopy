@@ -675,20 +675,14 @@ int main(int argc, char *argv[])
 	ctx.insp = http_inspector_alloc();
 	if (!ctx.insp)
 		die("failed to allocate a http inspector\n");
-	if (http_inspector_add_request_line_handler(ctx.insp, save_path))
-		die("failed to add the request line handler\n");
-	if (http_inspector_add_header_field_handler(ctx.insp, PKT_DIR_C2S,
-			save_host))
-		die("failed to add the request header field handler\n");
-	if (http_inspector_add_header_field_handler(ctx.insp, PKT_DIR_S2C,
-			parse_res_hdr_fild))
-		die("failed to add the response header field handler\n");
-	if (http_inspector_add_response_body_handler(ctx.insp, inspect_body))
-		die("failed to add the response body handler\n");
-	if (http_inspector_add_msg_end_handler(ctx.insp, PKT_DIR_C2S, end_req))
-		die("failed to add the request end handler\n");
-	if (http_inspector_add_msg_end_handler(ctx.insp, PKT_DIR_S2C, end_res))
-		die("failed to add the response end handler\n");
+	http_inspector_set_request_line_handler(ctx.insp, save_path);
+	http_inspector_set_header_field_handler(ctx.insp, PKT_DIR_C2S,
+			save_host);
+	http_inspector_set_header_field_handler(ctx.insp, PKT_DIR_S2C,
+			parse_res_hdr_fild);
+	http_inspector_set_response_body_handler(ctx.insp, inspect_body);
+	http_inspector_set_msg_end_handler(ctx.insp, PKT_DIR_C2S, end_req);
+	http_inspector_set_msg_end_handler(ctx.insp, PKT_DIR_S2C, end_res);
 	ctx.patn_list = patn_list_load(key_fn);
 	if (!ctx.patn_list)
 		die("failed to load keywords in %s\n", key_fn);

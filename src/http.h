@@ -31,13 +31,13 @@ typedef struct http_inspector http_inspector_t;
 
 http_inspector_t *http_inspector_alloc(void);
 void http_inspector_free(http_inspector_t *insp);
-int http_inspector_add_request_line_handler(http_inspector_t *insp,
+void http_inspector_set_request_line_handler(http_inspector_t *insp,
 		http_request_line_handler h);
-int http_inspector_add_header_field_handler(http_inspector_t *insp, int dir,
+void http_inspector_set_header_field_handler(http_inspector_t *insp, int dir,
 		http_header_field_handler h);
-int http_inspector_add_response_body_handler(http_inspector_t *insp,
+void http_inspector_set_response_body_handler(http_inspector_t *insp,
 		http_body_handler h);
-int http_inspector_add_msg_end_handler(http_inspector_t *insp, int dir,
+void http_inspector_set_msg_end_handler(http_inspector_t *insp, int dir,
 		http_msg_end_handler h);
 
 typedef struct http_inspect_ctx http_inspect_ctx_t;

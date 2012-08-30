@@ -26,31 +26,11 @@
 #include <stdbool.h>
 #include <zlib.h>
 
-struct request_line_handler_iter {
-	http_request_line_handler		handler;
-	struct request_line_handler_iter	*next;
-};
-
-struct header_field_handler_iter {
-	http_header_field_handler		handler;
-	struct header_field_handler_iter	*next;
-};
-
-struct body_handler_iter {
-	http_body_handler		handler;
-	struct body_handler_iter	*next;
-};
-
-struct msg_end_handler_iter {
-	http_msg_end_handler		handler;
-	struct msg_end_handler_iter	*next;
-};
-
 struct http_inspector {
-	struct request_line_handler_iter	*request_line;
-	struct header_field_handler_iter	*header_field[PKT_DIR_NUM];
-	struct body_handler_iter		*response_body;
-	struct msg_end_handler_iter		*msg_end[PKT_DIR_NUM];
+	http_request_line_handler	request_line;
+	http_header_field_handler	header_field[PKT_DIR_NUM];
+	http_body_handler		response_body;
+	http_msg_end_handler		msg_end[PKT_DIR_NUM];
 };
 
 http_inspector_t *http_inspector_alloc(void)
@@ -60,129 +40,59 @@ http_inspector_t *http_inspector_alloc(void)
 
 void http_inspector_free(http_inspector_t *insp)
 {
-	struct request_line_handler_iter *rq_line;
-	struct header_field_handler_iter *hdr_fild;
-	struct body_handler_iter *body;
-	struct msg_end_handler_iter *msg_end;
-	int dir;
-
-	while ((rq_line = insp->request_line)) {
-		insp->request_line = rq_line->next;
-		free(rq_line);
-	}
-
-	for (dir = 0; dir < PKT_DIR_NUM; dir++) {
-		while ((hdr_fild = insp->header_field[dir])) {
-			insp->header_field[dir] = hdr_fild->next;
-			free(hdr_fild);
-		}
-	}
-
-	while ((body = insp->response_body)) {
-		insp->response_body = body->next;
-		free(body);
-	}
-
-	for (dir = 0; dir < PKT_DIR_NUM; dir++) {
-		while ((msg_end = insp->msg_end[dir])) {
-			insp->msg_end[dir] = msg_end->next;
-			free(msg_end);
-		}
-	}
-
 	free(insp);
 }
 
-int http_inspector_add_request_line_handler(http_inspector_t *insp,
+void http_inspector_set_request_line_handler(http_inspector_t *insp,
 		http_request_line_handler h)
 {
-	struct request_line_handler_iter *i = malloc(sizeof(*i));
-
-	if (!i)
-		return -1;
-	i->handler = h;
-	i->next = insp->request_line;
-	insp->request_line = i;
-
-	return 0;
+	insp->request_line = h;
 }
 
-int http_inspector_add_header_field_handler(http_inspector_t *insp, int dir,
+void http_inspector_set_header_field_handler(http_inspector_t *insp, int dir,
 		http_header_field_handler h)
 {
-	struct header_field_handler_iter *i = malloc(sizeof(*i));
-
-	if (!i)
-		return -1;
-	i->handler = h;
-	i->next = insp->header_field[dir];
-	insp->header_field[dir] = i;
-
-	return 0;
+	insp->header_field[dir] = h;
 }
 
-int http_inspector_add_response_body_handler(http_inspector_t *insp,
+void http_inspector_set_response_body_handler(http_inspector_t *insp,
 		http_body_handler h)
 {
-	struct body_handler_iter *i = malloc(sizeof(*i));
-
-	if (!i)
-		return -1;
-	i->handler = h;
-	i->next = insp->response_body;
-	insp->response_body = i;
-
-	return 0;
+	insp->response_body = h;
 }
 
-int http_inspector_add_msg_end_handler(http_inspector_t *insp, int dir,
+void http_inspector_set_msg_end_handler(http_inspector_t *insp, int dir,
 		http_msg_end_handler h)
 {
-	struct msg_end_handler_iter *i = malloc(sizeof(*i));
-
-	if (!i)
-		return -1;
-	i->handler = h;
-	i->next = insp->msg_end[dir];
-	insp->msg_end[dir] = i;
-
-	return 0;
+	insp->msg_end[dir] = h;
 }
 
 static void call_request_line_handler(http_inspector_t *insp,
 		const char *method, const char *path, const char *http_version,
 		void *user)
 {
-	struct request_line_handler_iter *i;
-
-	for (i = insp->request_line; i; i = i->next)
-		i->handler(method, path, http_version, user);
+	if (insp->request_line)
+		insp->request_line(method, path, http_version, user);
 }
 
 static void call_header_field_handler(http_inspector_t *insp, int dir,
 		const char *name, const char *value, void *user)
 {
-	struct header_field_handler_iter *i;
-
-	for (i = insp->header_field[dir]; i; i = i->next)
-		i->handler(name, value, user);
+	if (insp->header_field[dir])
+		insp->header_field[dir](name, value, user);
 }
 
 static void call_response_body_handler(http_inspector_t *insp,
 		const unsigned char *data, int len, void *user)
 {
-	struct body_handler_iter *i;
-
-	for (i = insp->response_body; i; i = i->next)
-		i->handler(data, len, user);
+	if (insp->response_body)
+		insp->response_body(data, len, user);
 }
 
 static void call_msg_end_handler(http_inspector_t *insp, int dir, void *user)
 {
-	struct msg_end_handler_iter *i;
-
-	for (i = insp->msg_end[dir]; i; i = i->next)
-		i->handler(user);
+	if (insp->msg_end[dir])
+		insp->msg_end[dir](user);
 }
 
 /*
