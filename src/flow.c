@@ -52,7 +52,8 @@ struct flow {
 	be32_t			dst;
 	be16_t			sport;
 	be16_t			dport;
-	int			flags;
+	uint16_t		flags;
+	uint16_t		state;
 	uint32_t		fin_seq[PKT_DIR_NUM];
 	struct buf		buf[PKT_DIR_NUM];
 	struct flow_tag		*tag;
@@ -84,16 +85,6 @@ struct flow_gc_head {
 static struct flow **l_hash_table = NULL;
 int g_flow_cnt = 0;
 struct flow_stat g_flow_stat = { 0 };
-
-static inline int flow_state(struct flow *f)
-{
-	int flags = f->flags;
-
-	if ((flags & FLOW_FLAG_ACK) && !(flags & FLOW_FLAG_BOTH_FIN))
-		return FLOW_STATE_COMP;
-
-	return FLOW_STATE_INCOMP;
-}
 
 int flow_add_tag(flow_t *f, int id, void *data, void (*free)(void *data))
 {
@@ -144,13 +135,13 @@ static void flow_gc_del(struct flow *f)
 	if (f->gc_next)
 		f->gc_next->gc_pprev = f->gc_pprev;
 	else
-		flow_gc_head[flow_state(f)].ptail = f->gc_pprev;
+		flow_gc_head[f->state].ptail = f->gc_pprev;
 	f->gc_pprev = NULL;
 }
 
 static void flow_gc_add(struct flow *f)
 {
-	struct flow_gc_head *h = &flow_gc_head[flow_state(f)];
+	struct flow_gc_head *h = &flow_gc_head[f->state];
 
 	assert(!f->gc_pprev);
 
@@ -198,6 +189,7 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	f->sport = tcph->th_sport;
 	f->dport = tcph->th_dport;
 	f->flags = FLOW_FLAG_INIT;
+	f->state = FLOW_STATE_INCOMP;
 	buf_init(&f->buf[PKT_DIR_C2S], 0);
 	buf_init(&f->buf[PKT_DIR_S2C], 0);
 	f->tag = NULL;
@@ -248,7 +240,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 
 		bucket = random() & (FLOW_NR_MAX - 1);
 		for (f = l_hash_table[bucket]; f; f = f->hash_next) {
-			if (flow_state(f) == FLOW_STATE_INCOMP)
+			if (f->state == FLOW_STATE_INCOMP)
 				df = f;
 		}
 		if (df) {
@@ -321,8 +313,11 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 			}
 		}
 	} else if (tcph->th_flags & TH_ACK) {
-		if ((f->flags & FLOW_FLAG_BOTH_SYN) == FLOW_FLAG_BOTH_SYN)
+		if ((f->flags & FLOW_FLAG_BOTH_SYN) == FLOW_FLAG_BOTH_SYN &&
+		    (f->flags & FLOW_FLAG_BOTH_FIN) == 0) {
 			f->flags |= FLOW_FLAG_ACK;
+			f->state = FLOW_STATE_COMP;
+		}
 	}
 	if (tcph->th_flags & TH_FIN) {
 		int flag;
@@ -332,6 +327,7 @@ int flow_inspect(const struct timeval *ts, struct ip *ip, struct tcphdr *tcph,
 		else
 			flag = FLOW_FLAG_SERV_FIN;
 		if (!(f->flags & flag)) {
+			f->state = FLOW_STATE_INCOMP;
 			f->flags |= flag;
 			f->fin_seq[dir] = ntohl(tcph->th_seq) + len + 1;
 		}
