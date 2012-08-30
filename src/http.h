@@ -35,7 +35,7 @@ void http_inspector_set_request_line_handler(http_inspector_t *insp,
 		http_request_line_handler h);
 void http_inspector_set_header_field_handler(http_inspector_t *insp, int dir,
 		http_header_field_handler h);
-void http_inspector_set_response_body_handler(http_inspector_t *insp,
+void http_inspector_set_body_handler(http_inspector_t *insp, int dir,
 		http_body_handler h);
 void http_inspector_set_msg_end_handler(http_inspector_t *insp, int dir,
 		http_msg_end_handler h);

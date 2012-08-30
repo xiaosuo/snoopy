@@ -680,7 +680,7 @@ int main(int argc, char *argv[])
 			save_host);
 	http_inspector_set_header_field_handler(ctx.insp, PKT_DIR_S2C,
 			parse_res_hdr_fild);
-	http_inspector_set_response_body_handler(ctx.insp, inspect_body);
+	http_inspector_set_body_handler(ctx.insp, PKT_DIR_S2C, inspect_body);
 	http_inspector_set_msg_end_handler(ctx.insp, PKT_DIR_C2S, end_req);
 	http_inspector_set_msg_end_handler(ctx.insp, PKT_DIR_S2C, end_res);
 	ctx.patn_list = patn_list_load(key_fn);

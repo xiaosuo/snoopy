@@ -29,7 +29,7 @@
 struct http_inspector {
 	http_request_line_handler	request_line;
 	http_header_field_handler	header_field[PKT_DIR_NUM];
-	http_body_handler		response_body;
+	http_body_handler		body[PKT_DIR_NUM];
 	http_msg_end_handler		msg_end[PKT_DIR_NUM];
 };
 
@@ -55,10 +55,10 @@ void http_inspector_set_header_field_handler(http_inspector_t *insp, int dir,
 	insp->header_field[dir] = h;
 }
 
-void http_inspector_set_response_body_handler(http_inspector_t *insp,
+void http_inspector_set_body_handler(http_inspector_t *insp, int dir,
 		http_body_handler h)
 {
-	insp->response_body = h;
+	insp->body[dir] = h;
 }
 
 void http_inspector_set_msg_end_handler(http_inspector_t *insp, int dir,
@@ -82,11 +82,11 @@ static void call_header_field_handler(http_inspector_t *insp, int dir,
 		insp->header_field[dir](name, value, user);
 }
 
-static void call_response_body_handler(http_inspector_t *insp,
+static void call_body_handler(http_inspector_t *insp, int dir,
 		const unsigned char *data, int len, void *user)
 {
-	if (insp->response_body)
-		insp->response_body(data, len, user);
+	if (insp->body[dir])
+		insp->body[dir](data, len, user);
 }
 
 static void call_msg_end_handler(http_inspector_t *insp, int dir, void *user)
@@ -438,13 +438,13 @@ err:
 
 #define HTTP_DECODE_BUF_SIZE	4096
 
-static int decode_res_content(http_inspector_t *insp,
-		struct http_inspect_ctx_common *c, const unsigned char *data,
-		int len, void *user)
+static int decode_content(http_inspector_t *insp,
+		struct http_inspect_ctx_common *c, int dir,
+		const unsigned char *data, int len, void *user)
 {
 	switch (c->ce) {
 	case HTTP_CE_NONE:
-		call_response_body_handler(insp, data, len, user);
+		call_body_handler(insp, dir, data, len, user);
 		break;
 	case HTTP_CE_GZIP:
 	case HTTP_CE_DEFLATE: {
@@ -479,7 +479,7 @@ static int decode_res_content(http_inspector_t *insp,
 			if (streamp->avail_out != sizeof(buf)) {
 				int n = sizeof(buf) - streamp->avail_out;
 
-				call_response_body_handler(insp, buf, n, user);
+				call_body_handler(insp, dir, buf, n, user);
 			}
 			if (c->ce_end) {
 				inflateEnd(c->streamp);
@@ -546,8 +546,7 @@ static int __http_inspect_data(http_inspector_t *insp,
 		assert(c->body_len > 0);
 		n = MIN(len, c->body_len);
 		c->body_len -= n;
-		if (dir == PKT_DIR_S2C &&
-		    decode_res_content(insp, c, data, n, user))
+		if (decode_content(insp, c, dir, data, n, user))
 			goto err;
 		if (c->body_len == 0) {
 			http_inspect_ctx_common_reset(c);
@@ -588,8 +587,7 @@ static int __http_inspect_data(http_inspector_t *insp,
 		assert(c->body_len > 0);
 		n = MIN(len, c->body_len);
 		c->body_len -= n;
-		if (dir == PKT_DIR_S2C &&
-		    decode_res_content(insp, c, data, n, user))
+		if (decode_content(insp, c, dir, data, n, user))
 			goto err;
 		if (c->body_len == 0)
 			c->state = HTTP_STATE_MSG_CHUNK_CRLF;
