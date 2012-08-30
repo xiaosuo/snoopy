@@ -689,10 +689,9 @@ int main(void)
 
 	insp = http_inspector_alloc();
 	assert(insp);
-	assert(http_inspector_add_request_line_handler(insp, print_path) == 0);
-	assert(http_inspector_add_header_field_handler(insp, PKT_DIR_C2S,
-			print_hdr) == 0);
-	assert(http_inspector_add_response_body_handler(insp, print_body) == 0);
+	http_inspector_set_request_line_handler(insp, print_path);
+	http_inspector_set_header_field_handler(insp, PKT_DIR_C2S, print_hdr);
+	http_inspector_set_body_handler(insp, PKT_DIR_S2C, print_body);
 
 	c = http_inspect_ctx_alloc();
 	assert(c);
