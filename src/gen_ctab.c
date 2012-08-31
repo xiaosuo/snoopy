@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
 	for (i = 0; i < 256; i++) {
 		/* CHAR           = <any US-ASCII character (octets 0 - 127)> */
 		if (i <= 127)
-			ctab[i] |= CTAB_CHR;
+			ctab[i] |= CTAB_CHAR;
 		/* UPALPHA        = <any US-ASCII uppercase letter "A".."Z"> */
 		if (i >= 'A' && i <= 'Z')
 			ctab[i] |= CTAB_UPALPHA;
@@ -61,7 +61,7 @@ int main(int argc, char *argv[])
 		if (i != 0 && strchr("()<>@,;:\\\"/[]?={} \t", i))
 			ctab[i] |= CTAB_SEP;
 		/* token          = 1*<any CHAR except CTLs or separators> */
-		if ((ctab[i] & CTAB_CHR) && !(ctab[i] & (CTAB_CTL | CTAB_SEP)))
+		if ((ctab[i] & CTAB_CHAR) && !(ctab[i] & (CTAB_CTL | CTAB_SEP)))
 			ctab[i] |= CTAB_TOKEN;
 	}
 

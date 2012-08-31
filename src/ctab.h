@@ -19,7 +19,7 @@
 #ifndef __CTAB_H
 #define __CTAB_H
 
-#define CTAB_CHR	0x01
+#define CTAB_CHAR	0x01
 #define CTAB_UPALPHA	0x02
 #define CTAB_LOALPHA	0x04
 #define CTAB_ALPHA	(CTAB_UPALPHA | CTAB_LOALPHA)
