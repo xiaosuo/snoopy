@@ -740,7 +740,8 @@ void print_body(const unsigned char *data, int len, void *user)
 	}
 }
 
-void print_hdr(const char *name, const char *value, void *user)
+void print_hdr(const char *name, int name_len, const char *value,
+		int value_len, void *user)
 {
 	if (strcasecmp(name, "Host") == 0)
 		assert(strcmp(value, "www.test.com") == 0);
