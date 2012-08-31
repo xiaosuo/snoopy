@@ -460,7 +460,7 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 				c->minor_state = MINOR_STATE_CRLF;
 				break;
 			}
-			if (*ptr == ' ' || *ptr == '\t') {
+			if (_IS_SPACE(*ptr)) {
 				/* LWS */
 				n++;
 				if (http_parse_ctx_common_add_line(c, data, n))
@@ -500,7 +500,7 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 		break;
 	case MINOR_STATE_CRLF:
 		c->minor_state = MINOR_STATE_INIT;
-		if (data[0] == ' ' || data[0] == '\t') {
+		if (_IS_SPACE(data[0])) {
 			/* LWS */
 			n = 1;
 			if (http_parse_ctx_common_add_line(c, data, n))
