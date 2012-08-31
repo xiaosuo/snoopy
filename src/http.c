@@ -652,17 +652,36 @@ static int decode_content(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		if (c->ce_end)
 			break;
 		if (!streamp) {
+			int r;
+
 			c->streamp = calloc(1, sizeof(z_stream));
 			if (!c->streamp)
 				goto err;
 			if (c->ce == HTTP_CE_DEFLATE) {
-				if (inflateInit(c->streamp) != Z_OK)
-					goto err2;
+				/**
+				 * Some servers return files without zlib
+				 * headers, we detect it with the first byte.
+				 * The least-significant 4 bits in zlib header
+				 * for deflate algorithm is a fixed value 8,
+				 * and for raw deflate, it means non-final
+				 * non-compressed block. As the other bits
+				 * except for the least-significant 3 bits in
+				 * this byte are ignored, they should be
+				 * cleared, then the least-significant 4 bits
+				 * should not be 8.
+				 *
+				 * See RFC1950 and RFC1951 for more details.
+				 */
+				if (((*data) & 0x0f) == 8)
+					r = inflateInit(c->streamp);
+				else
+					r = inflateInit2(c->streamp,
+							-MAX_WBITS);
 			} else {
-				if (inflateInit2(c->streamp,
-						MAX_WBITS + 16) != Z_OK)
-					goto err2;
+				r = inflateInit2(c->streamp, MAX_WBITS + 16);
 			}
+			if (r != Z_OK)
+				goto err2;
 			streamp = c->streamp;
 		}
 		streamp->next_in = (unsigned char *)data;
