@@ -300,6 +300,25 @@ err:
        SP             = <US-ASCII SP, space (32)>
        HT             = <US-ASCII HT, horizontal-tab (9)>
  */
+static int lws_len(const char *s)
+{
+	int len;
+
+	if (s[0] == '\r' && s[1] == '\n' && _IS_SPACE(s[2])) {
+		len = 3;
+		s += 3;
+	} else {
+		len = 0;
+	}
+
+	while (_IS_SPACE(*s)) {
+		len++;
+		s++;
+	}
+
+	return len;
+}
+
 static char *skip_lws(char *s)
 {
 	enum {
@@ -348,6 +367,56 @@ static char *skip_lws(char *s)
 	}
 }
 
+/* TEXT           = <any OCTET except CTLs, but including LWS> */
+static int text_len(const char *str)
+{
+	if (CTAB_PTR(str) & CTAB_CTL)
+		return lws_len(str);
+	else
+		return 1;
+}
+
+/* quoted-pair    = "\" CHAR */
+static bool is_quoted_pair(const char *str)
+{
+	return str[0] == '\\' && (CTAB_PTR(str + 1) & CTAB_CHAR);
+}
+
+/**
+ * quoted-string  = ( <"> *(qdtext | quoted-pair ) <"> )
+ * qdtext         = <any TEXT except <">>
+ */
+/* return 0 on malformed quoted string */
+static int get_quoted_str_len(const char *str, int size)
+{
+	int len = 0;
+
+	assert(*str == '"');
+	str++;
+	len++;
+	size--;
+
+	while (1) {
+		if (size < 1)
+			return 0;
+		if (len >= 2 && is_quoted_pair(str)) {
+			len += 2;
+			str += 2;
+			size -= 2;
+		} else if (*str == '"') {
+			return len + 1;
+		} else {
+			int txt_len = text_len(str);
+
+			if (txt_len == 0)
+				return 0;
+			len += txt_len;
+			str += txt_len;
+			size -= txt_len;
+		}
+	}
+}
+
 /* 
        message-header = field-name ":" [ field-value ]
        field-name     = token
@@ -379,16 +448,58 @@ static int http_parse_header_field(http_parser_t *pasr,
 	if (fn_len == 14 && strcasecmp(hdr, "Content-Length") == 0) {
 		c->body_len = strtoull(fv, NULL, 0);
 	} else if (fn_len == 17 && strcasecmp(hdr, "Transfer-Encoding") == 0) {
+		char *tok;
+
 		/*
 		 * Transfer-Encoding       = "Transfer-Encoding" ":" 1#transfer-coding
 		 * transfer-coding         = "chunked" | transfer-extension
 		 * transfer-extension      = token *( ";" parameter )
+		 * All transfer-coding values are case-insensitive
 		 */
-		/* All transfer-coding values are case-insensitive */
-		if (strcasecmp(fv, "chunked") == 0)
-			c->is_chunked = 1;
+		tok = fv;
+		while (1) {
+			int len = get_token_len(tok);
+
+			if (len == 7 && strncasecmp_c(tok, "chunked") == 0)
+				c->is_chunked = 1;
+			else if (len > 0)
+				c->is_chunked = 0;
+			tok = skip_lws(tok + len);
+			if (*tok == '\0') {
+				break;
+			} else if (*tok == ',') {
+				tok = skip_lws(++tok);
+			} else if (*tok == ';') {
+next_attr:
+				tok = skip_lws(++tok);
+				len = get_token_len(tok);
+				if (len == 0)
+					goto err;
+				tok = skip_lws(tok + len);
+				if (*tok != '=')
+					goto err;
+				tok = skip_lws(++tok);
+				if (*tok == '"')
+					len = get_quoted_str_len(tok,
+							hdr_len - (tok - hdr));
+				else
+					len = get_token_len(tok);
+				if (len == 0)
+					goto err;
+				tok = skip_lws(tok + len);
+				if (*tok == '\0')
+					break;
+				else if (*tok == ',')
+					tok = skip_lws(++tok);
+				else if (*tok == ';')
+					goto next_attr;
+				else
+					goto err;
+			} else {
+				goto err;
+			}
+		}
 	} else if (fn_len == 16 && strcasecmp(hdr, "Content-Encoding") == 0) {
-		int len;
 		char *tok;
 
 		/*
@@ -410,7 +521,8 @@ static int http_parse_header_field(http_parser_t *pasr,
 
 		tok = fv;
 		while (1) {
-			len = get_token_len(tok);
+			int len = get_token_len(tok);
+
 			if ((len == 4 && strncasecmp_c(tok, "gzip") == 0) ||
 			    (len == 6 && strncasecmp_c(tok, "x-gzip") == 0))
 				c->ce = HTTP_CE_GZIP;
@@ -418,8 +530,7 @@ static int http_parse_header_field(http_parser_t *pasr,
 				c->ce = HTTP_CE_DEFLATE;
 			else if (len > 0)
 				c->ce = HTTP_CE_NONE;
-			tok += len;
-			tok = skip_lws(tok);
+			tok = skip_lws(tok + len);
 			if (*tok == '\0')
 				break;
 			else if (*tok == ',')
