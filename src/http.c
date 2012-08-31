@@ -77,10 +77,11 @@ static void call_request_line_handler(http_parser_t *pasr,
 }
 
 static void call_header_field_handler(http_parser_t *pasr, int dir,
-		const char *name, const char *value, void *user)
+		const char *name, int name_len, const char *value,
+		int value_len, void *user)
 {
 	if (pasr->header_field[dir])
-		pasr->header_field[dir](name, value, user);
+		pasr->header_field[dir](name, name_len, value, value_len, user);
 }
 
 static void call_body_handler(http_parser_t *pasr, int dir,
@@ -339,27 +340,30 @@ static int get_token_len(const char *str)
        field-content  = <the OCTETs making up the field-value
                         and consisting of either *TEXT or combinations
                         of token, separators, and quoted-string>
-       TEXT           = <any OCTET except CTLs, but including LWS>
-       quoted-string  = ( <"> *(qdtext | quoted-pair ) <"> )
-       qdtext         = <any TEXT except <">>
-       quoted-pair    = "\" CHAR
        OCTET          = <any 8-bit sequence of data>
        <">            = <US-ASCII double-quote mark (34)>
 */
 static int http_parse_header_field(http_parser_t *pasr,
 		struct http_parse_ctx_common *c, int dir, char *hdr,
-		void *user)
+		int hdr_len, void *user)
 {
-	char *fv = strchr(hdr, ':');
+	char *fv;
+	int fn_len, fv_len;
 
-	if (!fv)
+	fn_len = get_token_len(hdr);
+	if (fn_len == 0)
 		goto err;
-	*fv++ = '\0';
-	fv = skip_lws(fv);
 
-	if (strcasecmp(hdr, "Content-Length") == 0) {
+	fv = skip_lws(hdr + fn_len);
+	if (*fv != ':')
+		goto err;
+	hdr[fn_len] = '\0';
+	fv = skip_lws(++fv);
+	fv_len = hdr_len - (fv - hdr);
+
+	if (fn_len == 14 && strcasecmp(hdr, "Content-Length") == 0) {
 		c->body_len = strtoull(fv, NULL, 0);
-	} else if (strcasecmp(hdr, "Transfer-Encoding") == 0) {
+	} else if (fn_len == 17 && strcasecmp(hdr, "Transfer-Encoding") == 0) {
 		/*
 		 * Transfer-Encoding       = "Transfer-Encoding" ":" 1#transfer-coding
 		 * transfer-coding         = "chunked" | transfer-extension
@@ -368,7 +372,7 @@ static int http_parse_header_field(http_parser_t *pasr,
 		/* All transfer-coding values are case-insensitive */
 		if (strcasecmp(fv, "chunked") == 0)
 			c->is_chunked = 1;
-	} else if (strcasecmp(hdr, "Content-Encoding") == 0) {
+	} else if (fn_len == 16 && strcasecmp(hdr, "Content-Encoding") == 0) {
 		int len;
 		char *tok;
 
@@ -410,7 +414,7 @@ static int http_parse_header_field(http_parser_t *pasr,
 		}
 	}
 
-	call_header_field_handler(pasr, dir, hdr, fv, user);
+	call_header_field_handler(pasr, dir, hdr, fn_len, fv, fv_len, user);
 
 	return 0;
 err:
@@ -451,7 +455,7 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 			if (http_parse_ctx_common_add_line(c, data, n - 2))
 				goto err;
 			if (http_parse_header_field(pasr, c, dir, c->line,
-					user))
+					c->line_len, user))
 				goto err;
 			c->line_len = 0;
 			break;
@@ -491,7 +495,8 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 		c->line_len -= 2;
 		c->line[c->line_len] = '\0';
 		n = 0;
-		if (http_parse_header_field(pasr, c, dir, c->line, user))
+		if (http_parse_header_field(pasr, c, dir, c->line,
+				c->line_len, user))
 			goto err;
 		c->line_len = 0;
 		break;

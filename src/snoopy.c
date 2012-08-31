@@ -411,7 +411,8 @@ err:
 	return;
 }
 
-static void save_host(const char *name, const char *value, void *user)
+static void save_host(const char *name, int name_len,
+		const char *value, int value_len, void *user)
 {
 	struct http_user *hu = user;
 	struct flow_ctx *fc = hu->fc;
@@ -419,7 +420,7 @@ static void save_host(const char *name, const char *value, void *user)
 
 	if (!(r = fc->req_part))
 		goto err;
-	if (strcasecmp(name, "Host") == 0) {
+	if (name_len == 4 && strcasecmp(name, "Host") == 0) {
 		if (r->host)
 			free(r->host);
 		pr_debug("host: %s\n", value);
@@ -444,7 +445,8 @@ err:
 	return;
 }
 
-static void parse_res_hdr_fild(const char *name, const char *value, void *user)
+static void parse_res_hdr_fild(const char *name, int name_len,
+		const char *value, int value_len, void *user)
 {
 	struct http_user *hu = user;
 	struct flow_ctx *fc = hu->fc;
@@ -452,7 +454,7 @@ static void parse_res_hdr_fild(const char *name, const char *value, void *user)
 
 	if (!name || !(r = fc->req_head))
 		goto err;
-	if (strcasecmp(name, "Content-Type") == 0) {
+	if (name_len == 12 && strcasecmp(name, "Content-Type") == 0) {
 		/*
 		 * media-type     = type "/" subtype *( ";" parameter )
 		 * type           = token
@@ -469,7 +471,7 @@ static void parse_res_hdr_fild(const char *name, const char *value, void *user)
 		    strncasecmp_c(value, "application/xhtml+xml") != 0 &&
 		    strncasecmp_c(value, "application/xml") != 0)
 			r->is_non_text_res = true;
-	} else if (strcasecmp(name, "Content-Range") == 0) {
+	} else if (name_len == 13 && strcasecmp(name, "Content-Range") == 0) {
 		const char *ptr;
 
 		/*
