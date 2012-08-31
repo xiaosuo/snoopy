@@ -1,4 +1,4 @@
-.PHONY: all install clean
+.PHONY: all install clean test
 
-all install clean:
+all install clean test:
 	$(MAKE) -C src $@

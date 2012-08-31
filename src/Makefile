@@ -10,7 +10,7 @@ else
 CFLAGS += -g
 endif
 
-.PHONY: all install clean
+.PHONY: all install clean test
 
 all: ${TARGETS}
 
@@ -25,3 +25,6 @@ install: all
 
 clean:
 	$(RM) *.o ${TARGETS} ctab.c
+
+test:
+	../test/test.sh
