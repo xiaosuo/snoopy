@@ -27,17 +27,31 @@ int main(int argc, char *argv[])
 
 	memset(ctab, 0, sizeof(ctab));
 	for (i = 0; i < 256; i++) {
-		if (i == 0)
-			ctab[i] |= CTAB_NUL;
 		/* CHAR           = <any US-ASCII character (octets 0 - 127)> */
 		if (i <= 127)
 			ctab[i] |= CTAB_CHR;
+		/* UPALPHA        = <any US-ASCII uppercase letter "A".."Z"> */
+		if (i >= 'A' && i <= 'Z')
+			ctab[i] |= CTAB_UPALPHA;
+		/* LOALPHA        = <any US-ASCII lowercase letter "a".."z"> */
+		if (i >= 'a' && i <= 'z')
+			ctab[i] |= CTAB_LOALPHA;
+		/* DIGIT          = <any US-ASCII digit "0".."9"> */
+		if (i >= '0' && i <= '9')
+			ctab[i] |= CTAB_DIGIT;
 		/**
 		 * CTL            = <any US-ASCII control character
 		 * 		  (octets 0 - 31) and DEL (127)>
 		 */
 		if (i <= 31 || i == 127)
 			ctab[i] |= CTAB_CTL;
+		/**
+		 * HEX            = "A" | "B" | "C" | "D" | "E" | "F"
+		 * 		  | "a" | "b" | "c" | "d" | "e" | "f" | DIGIT
+		 */
+		if ((i >= 'a' && i <= 'f') || (i >= 'A' && i <= 'F') ||
+		    (ctab[i] & CTAB_DIGIT))
+			ctab[i] |= CTAB_HEX;
 		/**
 		 * separators     = "(" | ")" | "<" | ">" | "@"
 		 * 		  | "," | ";" | ":" | "\" | <">
@@ -46,6 +60,9 @@ int main(int argc, char *argv[])
 		 */
 		if (i != 0 && strchr("()<>@,;:\\\"/[]?={} \t", i))
 			ctab[i] |= CTAB_SEP;
+		/* token          = 1*<any CHAR except CTLs or separators> */
+		if ((ctab[i] & CTAB_CHR) && !(ctab[i] & (CTAB_CTL | CTAB_SEP)))
+			ctab[i] |= CTAB_TOKEN;
 	}
 
 	printf("#include \"ctab.h\"\n");

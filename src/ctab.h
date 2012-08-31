@@ -19,11 +19,18 @@
 #ifndef __CTAB_H
 #define __CTAB_H
 
-#define CTAB_NUL	0x1
-#define CTAB_CHR	0x2
-#define CTAB_CTL	0x4
-#define CTAB_SEP	0x8
+#define CTAB_CHR	0x01
+#define CTAB_UPALPHA	0x02
+#define CTAB_LOALPHA	0x04
+#define CTAB_ALPHA	(CTAB_UPALPHA | CTAB_LOALPHA)
+#define CTAB_DIGIT	0x08
+#define CTAB_CTL	0x10
+#define CTAB_SEP	0x20
+#define CTAB_HEX	0x40
+#define CTAB_TOKEN	0x80
 
 extern const unsigned char ctab[256];
+
+#define CTAB_PTR(x)	(ctab[*(const unsigned char *)(x)])
 
 #endif /* __CTAB_H */
