@@ -196,6 +196,16 @@ void http_parse_ctx_free(http_parse_ctx_t *ctx)
 	free(ctx);
 }
 
+static int get_token_len(const char *str)
+{
+	int len;
+
+	for (len = 0; CTAB_PTR(str) & CTAB_TOKEN; len++, str++)
+		/* empty */;
+
+	return len;
+}
+
 /*
         Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
        HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
@@ -203,16 +213,31 @@ void http_parse_ctx_free(http_parse_ctx_t *ctx)
 */
 static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 {
-	char *path = strchr(line, ' ');
-	char *ver;
+	char *path, *ver;
+	int len = get_token_len(line);
 
-	if (!path)
+	if (len == 0)
+		goto err;
+	path = line + len;
+#define _IS_SPACE(c) ((c) == ' ' || (c) == '\t')
+	if (!_IS_SPACE(*path))
 		goto err;
 	*path++ = '\0';
-	ver = strchr(path, ' ');
-	if (!ver)
-		goto err;
+
+	while (_IS_SPACE(*path))
+		path++;
+	ver = path;
+	do {
+		if (*ver == '\0')
+			goto err;
+		ver++;
+	} while (!_IS_SPACE(*ver));
 	*ver++ = '\0';
+
+	while (_IS_SPACE(*ver))
+		ver++;
+	if (*ver == '\0')
+		goto err;
 
 	call_request_line_handler(pasr, line, path, ver, user);
 
@@ -321,16 +346,6 @@ static char *skip_lws(char *s)
 		}
 		s++;
 	}
-}
-
-static int get_token_len(const char *str)
-{
-	int len;
-
-	for (len = 0; CTAB_PTR(str) & CTAB_TOKEN; len++, str++)
-		/* empty */;
-
-	return len;
 }
 
 /* 
