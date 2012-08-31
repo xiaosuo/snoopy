@@ -655,8 +655,14 @@ static int decode_content(http_parser_t *pasr, struct http_parse_ctx_common *c,
 			c->streamp = calloc(1, sizeof(z_stream));
 			if (!c->streamp)
 				goto err;
-			if (inflateInit2(c->streamp, MAX_WBITS + 32) != Z_OK)
-				goto err2;
+			if (c->ce == HTTP_CE_DEFLATE) {
+				if (inflateInit(c->streamp) != Z_OK)
+					goto err2;
+			} else {
+				if (inflateInit2(c->streamp,
+						MAX_WBITS + 16) != Z_OK)
+					goto err2;
+			}
 			streamp = c->streamp;
 		}
 		streamp->next_in = (unsigned char *)data;
