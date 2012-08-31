@@ -19,6 +19,7 @@
 #include "http.h"
 #include "utils.h"
 #include "flow.h"
+#include "ctab.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -321,6 +322,22 @@ static char *skip_lws(char *s)
 	}
 }
 
+/* token          = 1*<any CHAR except CTLs or separators> */
+static int get_token_len(const char *str)
+{
+	int len = 0;
+
+	while (1) {
+		unsigned char c = *(const unsigned char *)str;
+
+		c = ctab[c];
+		if (!(c & CTAB_CHR) || (c & (CTAB_CTL | CTAB_SEP)))
+			return len;
+		len++;
+		str++;
+	}
+}
+
 /* 
        message-header = field-name ":" [ field-value ]
        field-name     = token
@@ -328,15 +345,7 @@ static char *skip_lws(char *s)
        field-content  = <the OCTETs making up the field-value
                         and consisting of either *TEXT or combinations
                         of token, separators, and quoted-string>
-       token          = 1*<any CHAR except CTLs or separators>
-       separators     = "(" | ")" | "<" | ">" | "@"
-                      | "," | ";" | ":" | "\" | <">
-                      | "/" | "[" | "]" | "?" | "="
-                      | "{" | "}" | SP | HT
        TEXT           = <any OCTET except CTLs, but including LWS>
-       CHAR           = <any US-ASCII character (octets 0 - 127)>
-       CTL            = <any US-ASCII control character
-                        (octets 0 - 31) and DEL (127)>
        quoted-string  = ( <"> *(qdtext | quoted-pair ) <"> )
        qdtext         = <any TEXT except <">>
        quoted-pair    = "\" CHAR
@@ -366,6 +375,9 @@ static int http_parse_header_field(http_parser_t *pasr,
 		if (strcasecmp(fv, "chunked") == 0)
 			c->is_chunked = 1;
 	} else if (strcasecmp(hdr, "Content-Encoding") == 0) {
+		int len;
+		char *tok;
+
 		/*
 		 * Content-Encoding  = "Content-Encoding" ":" 1#content-coding
 		 * content-coding   = token
@@ -382,13 +394,26 @@ static int http_parse_header_field(http_parser_t *pasr,
 			free(c->streamp);
 			c->streamp = NULL;
 		}
-		if (strcasecmp(fv, "gzip") == 0 ||
-		    strcasecmp(fv, "x-gzip") == 0)
-			c->ce = HTTP_CE_GZIP;
-		else if (strcasecmp(fv, "deflate") == 0)
-			c->ce = HTTP_CE_DEFLATE;
-		else
-			c->ce = HTTP_CE_NONE;
+
+		tok = fv;
+		while (1) {
+			len = get_token_len(tok);
+			if ((len == 4 && strncasecmp_c(tok, "gzip") == 0) ||
+			    (len == 6 && strncasecmp_c(tok, "x-gzip") == 0))
+				c->ce = HTTP_CE_GZIP;
+			else if (len == 7 && strncasecmp_c(tok, "deflate") == 0)
+				c->ce = HTTP_CE_DEFLATE;
+			else if (len > 0)
+				c->ce = HTTP_CE_NONE;
+			tok += len;
+			tok = skip_lws(tok);
+			if (*tok == '\0')
+				break;
+			else if (*tok == ',')
+				tok = skip_lws(++tok);
+			else
+				goto err;
+		}
 	}
 
 	call_header_field_handler(pasr, dir, hdr, fv, user);

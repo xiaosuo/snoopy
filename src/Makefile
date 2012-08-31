@@ -1,7 +1,7 @@
 CFLAGS += -Wall -O2 -D_GNU_SOURCE
 LDFLAGS += -lpcap -lz
 TARGETS := snoopy
-OBJS := $(patsubst %.c,%.o,$(wildcard *.c))
+OBJS := $(filter-out gen_ctab.o,$(patsubst %.c,%.o,$(wildcard *.c))) ctab.o
 PREFIX ?= /usr/local
 
 ifeq (${DEBUG},)
@@ -16,9 +16,12 @@ all: ${TARGETS}
 
 snoopy: ${OBJS}
 
+ctab.c: gen_ctab
+	./gen_ctab > ctab.c
+
 install: all
 	install -d ${DESTDIR}${PREFIX}/sbin/
 	install ${TARGETS} ${DESTDIR}${PREFIX}/sbin/
 
 clean:
-	$(RM) *.o ${TARGETS}
+	$(RM) *.o ${TARGETS} ctab.c
