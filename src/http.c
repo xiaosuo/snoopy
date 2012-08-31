@@ -322,20 +322,14 @@ static char *skip_lws(char *s)
 	}
 }
 
-/* token          = 1*<any CHAR except CTLs or separators> */
 static int get_token_len(const char *str)
 {
-	int len = 0;
+	int len;
 
-	while (1) {
-		unsigned char c = *(const unsigned char *)str;
+	for (len = 0; CTAB_PTR(str) & CTAB_TOKEN; len++, str++)
+		/* empty */;
 
-		c = ctab[c];
-		if (!(c & CTAB_CHR) || (c & (CTAB_CTL | CTAB_SEP)))
-			return len;
-		len++;
-		str++;
-	}
+	return len;
 }
 
 /* 
