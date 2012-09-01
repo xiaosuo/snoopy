@@ -394,6 +394,14 @@ err:
 	return;
 }
 
+static void raw_handler(u_char *user, const struct pcap_pkthdr *h,
+		const u_char *bytes)
+{
+	check_pkthdr(h);
+
+	ip_handler((struct snoopy_ctx *)user, &h->ts, bytes, h->len);
+}
+
 static void save_path(const char *method, const char *path,
 		const char *http_version, void *user)
 {
@@ -748,6 +756,9 @@ int main(int argc, char *argv[])
 		break;
 	case DLT_LINUX_SLL:
 		handler = linux_sll_handler;
+		break;
+	case DLT_RAW:
+		handler = raw_handler;
 		break;
 	default:
 		die("unsupported datalnk: %s\n",
