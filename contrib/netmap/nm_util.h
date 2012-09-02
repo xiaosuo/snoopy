@@ -106,9 +106,13 @@ static inline int min(int a, int b) { return a < b ? a : b; }
 
 /* debug support */
 #define ND(format, ...)	do {} while(0)
+#ifndef NDEBUG
 #define D(format, ...)				\
 	fprintf(stderr, "%s [%d] " format "\n", 	\
 	__FUNCTION__, __LINE__, ##__VA_ARGS__)
+#else
+#define D(format, ...) do {} while (0)
+#endif /* NDEBUG */
 
 #ifndef EXPERIMENTAL
 #define EXPERIMENTAL 0

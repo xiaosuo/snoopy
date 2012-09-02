@@ -1,5 +1,5 @@
 
-CFLAGS += -Wall -O2 -fPIC -I.
+CFLAGS += -Wall -O2 -fPIC -I. -DNDEBUG
 
 .PHONY: all install clean
 
