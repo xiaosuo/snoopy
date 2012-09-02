@@ -132,6 +132,7 @@ struct pcap_ring {
 	char *errbuf;
 	int promisc;
 	int to_ms;
+	int stop;
 
 	struct pcap_pkthdr hdr;
 
@@ -576,15 +577,45 @@ pcap_loop(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 	fds[0].events = (POLLIN);
 
 	while (cnt == -1 || cnt > 0) {
+		if (me->stop)
+			break;
                 if (poll(fds, 1, me->to_ms) <= 0) {
                         D("poll error/timeout");
 			continue;
                 }
+		if (me->stop)
+			break;
 		i = pcap_dispatch(p, cnt, callback, user);
 		if (cnt > 0)
 			cnt -= i;
 	}
+	me->stop = 0;
 	return 0;
+}
+
+void
+pcap_breakloop(pcap_t *p)
+{
+	struct pcap_ring *me = p;
+
+	me->stop = 1;
+}
+
+int
+pcap_set_buffer_size(pcap_t *p, int buffer_size)
+{
+	return 0;
+}
+
+void
+pcap_freecode(struct bpf_program *fp)
+{
+}
+
+pcap_t *
+pcap_open_offline(const char *fname, char *errbuf)
+{
+	return NULL;
 }
 
 #endif /* !TEST */
