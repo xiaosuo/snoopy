@@ -6,7 +6,7 @@ CFLAGS += -Wall -O2 -fPIC -I.
 all: libnetmap.so
 
 libnetmap.so: pcap.o nm_util.o
-	$(CC) -o $@ -shared ${CFLAGS} $<
+	$(CC) -o $@ -shared ${CFLAGS} $^
 
 install: all
 
