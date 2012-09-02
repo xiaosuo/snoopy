@@ -58,7 +58,6 @@ static void dump_in_raw(u_char *user, const struct pcap_pkthdr *h,
 	ph.usec = h->ts.tv_usec;
 	ph.len = h->len - sizeof(*eth);
 	ph.caplen = h->caplen - sizeof(*eth);
-	printf("%u\n", ph.caplen);
 	if (fwrite(&ph, sizeof(ph), 1, fp) != 1 ||
 	    (ph.caplen > 0 &&
 	     fwrite(bytes + sizeof(*eth), ph.caplen, 1, fp) != 1))
