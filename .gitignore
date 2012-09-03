@@ -1,4 +1,5 @@
 *.o
+*.so
 cscope.out
 src/snoopy
 tags
