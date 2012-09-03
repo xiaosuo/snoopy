@@ -205,6 +205,8 @@ static int get_token_len(const char *str)
 	return len;
 }
 
+#define _IS_SPACE(c) ((c) == ' ' || (c) == '\t')
+
 /*
         Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
        HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
@@ -218,22 +220,21 @@ static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 	if (len == 0)
 		goto err;
 	path = line + len;
-#define _IS_SPACE(c) ((c) == ' ' || (c) == '\t')
-	if (!_IS_SPACE(*path))
+	if (!(CTAB_PTR(path) & CTAB_SPACE))
 		goto err;
 	*path++ = '\0';
 
-	while (_IS_SPACE(*path))
+	while (CTAB_PTR(path) & CTAB_SPACE)
 		path++;
 	ver = path;
 	do {
 		if (*ver == '\0')
 			goto err;
 		ver++;
-	} while (!_IS_SPACE(*ver));
+	} while (!(CTAB_PTR(ver) & CTAB_SPACE));
 	*ver++ = '\0';
 
-	while (_IS_SPACE(*ver))
+	while (CTAB_PTR(ver) & CTAB_SPACE)
 		ver++;
 	if (*ver == '\0')
 		goto err;
