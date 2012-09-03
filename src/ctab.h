@@ -36,10 +36,48 @@
 
 extern const unsigned short ctab[256];
 
-#define DEFINE_IS_X(suffix, type) \
-static inline bool is_##suffix(unsigned char c) \
+#define DEFINE_IS_X(type, tab) \
+static inline bool is_##type(unsigned char c) \
 { \
-	return (ctab[c] & (type)) != 0; \
+	return (ctab[c] & (tab)) != 0; \
+} \
+ \
+static inline int __##type##_len(const char *s) \
+{ \
+	int l; \
+ \
+	for (l = 0; is_##type(*s); l++) \
+		s++; \
+ \
+	return l; \
+} \
+ \
+static inline int type##_len(const char *s, int sz) \
+{ \
+	int l; \
+ \
+	for (l = 0; sz > 0 && is_##type(*s); l++, sz--) \
+		s++; \
+ \
+	return l; \
+} \
+ \
+static inline char *__skip_##type(const char *s) \
+{ \
+	while (is_##type(*s)) \
+		s++; \
+ \
+	return (char *)s; \
+} \
+ \
+static inline char *skip_##type(const char *s, int sz) \
+{ \
+	while (sz > 0 && is_##type(*s)) { \
+		s++; \
+		sz--; \
+	} \
+ \
+	return (char *)s; \
 }
 
 DEFINE_IS_X(char, CTAB_CHAR);

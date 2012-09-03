@@ -195,16 +195,6 @@ void http_parse_ctx_free(http_parse_ctx_t *ctx)
 	free(ctx);
 }
 
-static int get_token_len(const char *str)
-{
-	int len;
-
-	for (len = 0; is_token(*str); len++)
-		str++;
-
-	return len;
-}
-
 /*
         Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
        HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
@@ -213,7 +203,7 @@ static int get_token_len(const char *str)
 static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 {
 	char *path, *ver;
-	int len = get_token_len(line);
+	int len = __token_len(line);
 
 	if (len == 0)
 		goto err;
@@ -222,8 +212,7 @@ static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 		goto err;
 	*path++ = '\0';
 
-	while (is_space(*path))
-		path++;
+	path = __skip_space(path);
 	ver = path;
 	do {
 		if (*ver == '\0')
@@ -232,8 +221,7 @@ static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 	} while (!is_space(*ver));
 	*ver++ = '\0';
 
-	while (is_space(*ver))
-		ver++;
+	ver = __skip_space(ver);
 	if (*ver == '\0')
 		goto err;
 
@@ -272,21 +260,6 @@ static int http_get_line(struct http_parse_ctx_common *c,
 	return n;
 err:
 	return -1;
-}
-
-static int lws_len(const char *s)
-{
-	int len;
-
-	for (len = 0; is_lws(*s); len++)
-		s++;
-
-	return len;
-}
-
-static char *skip_lws(const char *s)
-{
-	return (char *)(s + lws_len(s));
 }
 
 /* quoted-pair    = "\" CHAR */
@@ -341,39 +314,39 @@ static int http_parse_transfer_encoding(struct http_parse_ctx_common *c,
 
 	tok = fv;
 	while (1) {
-		int len = get_token_len(tok);
+		int len = __token_len(tok);
 
 		if (len == 7 && strncasecmp_c(tok, "chunked") == 0)
 			c->is_chunked = 1;
 		else if (len > 0)
 			c->is_chunked = 0;
-		tok = skip_lws(tok + len);
+		tok = __skip_lws(tok + len);
 		if (*tok == '\0') {
 			break;
 		} else if (*tok == ',') {
-			tok = skip_lws(++tok);
+			tok = __skip_lws(++tok);
 		} else if (*tok == ';') {
 next_attr:
-			tok = skip_lws(++tok);
-			len = get_token_len(tok);
+			tok = __skip_lws(++tok);
+			len = __token_len(tok);
 			if (len == 0)
 				goto err;
-			tok = skip_lws(tok + len);
+			tok = __skip_lws(tok + len);
 			if (*tok != '=')
 				goto err;
-			tok = skip_lws(++tok);
+			tok = __skip_lws(++tok);
 			if (*tok == '"')
 				len = get_quoted_str_len(tok,
 						fv_len - (tok - fv));
 			else
-				len = get_token_len(tok);
+				len = __token_len(tok);
 			if (len == 0)
 				goto err;
-			tok = skip_lws(tok + len);
+			tok = __skip_lws(tok + len);
 			if (*tok == '\0')
 				break;
 			else if (*tok == ',')
-				tok = skip_lws(++tok);
+				tok = __skip_lws(++tok);
 			else if (*tok == ';')
 				goto next_attr;
 			else
@@ -412,7 +385,7 @@ static int http_parse_content_encoding(struct http_parse_ctx_common *c,
 
 	tok = fv;
 	while (1) {
-		int len = get_token_len(tok);
+		int len = __token_len(tok);
 
 		if ((len == 4 && strncasecmp_c(tok, "gzip") == 0) ||
 		    (len == 6 && strncasecmp_c(tok, "x-gzip") == 0))
@@ -421,11 +394,11 @@ static int http_parse_content_encoding(struct http_parse_ctx_common *c,
 			c->ce = HTTP_CE_DEFLATE;
 		else if (len > 0)
 			c->ce = HTTP_CE_NONE;
-		tok = skip_lws(tok + len);
+		tok = __skip_lws(tok + len);
 		if (*tok == '\0')
 			break;
 		else if (*tok == ',')
-			tok = skip_lws(++tok);
+			tok = __skip_lws(++tok);
 		else
 			goto err;
 	}
@@ -452,15 +425,15 @@ static int http_parse_header_field(http_parser_t *pasr,
 	char *fv;
 	int fn_len, fv_len;
 
-	fn_len = get_token_len(hdr);
+	fn_len = __token_len(hdr);
 	if (fn_len == 0)
 		goto err;
 
-	fv = skip_lws(hdr + fn_len);
+	fv = __skip_lws(hdr + fn_len);
 	if (*fv != ':')
 		goto err;
 	hdr[fn_len] = '\0';
-	fv = skip_lws(++fv);
+	fv = __skip_lws(++fv);
 	fv_len = hdr_len - (fv - hdr);
 
 	if (fn_len == 14 && strcasecmp(hdr, "Content-Length") == 0) {
