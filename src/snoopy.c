@@ -312,8 +312,8 @@ err:
 	return;
 }
 
-static void ethernet_demux(struct snoopy_ctx *sc, const struct timeval *ts,
-		const uint8_t *bytes, int len, int proto)
+static void ethernet_demux(struct snoopy_ctx *sc, const uint8_t *bytes, int len,
+		int proto)
 {
 	struct vlan_hdr *vlan;
 	struct pppoe_ses_hdr *pppoe_ses;
@@ -371,7 +371,7 @@ static void ethernet_handler(u_char *user, const struct pcap_pkthdr *h,
 	if (h->len < sizeof(*eth))
 		goto err;
 	eth = (struct ether_header *)bytes;
-	ethernet_demux((struct snoopy_ctx *)user, &h->ts, bytes + sizeof(*eth),
+	ethernet_demux((struct snoopy_ctx *)user, bytes + sizeof(*eth),
 			h->len - sizeof(*eth), ntohs(eth->ether_type));
 err:
 	return;
@@ -387,7 +387,7 @@ static void linux_sll_handler(u_char *user, const struct pcap_pkthdr *h,
 	if (h->len < sizeof(*sll))
 		goto err;
 	sll = (struct sll_header *)bytes;
-	ethernet_demux((struct snoopy_ctx *)user, &h->ts, bytes + sizeof(*sll),
+	ethernet_demux((struct snoopy_ctx *)user, bytes + sizeof(*sll),
 			h->len - sizeof(*sll), ntohs(sll->sll_protocol));
 err:
 	return;
