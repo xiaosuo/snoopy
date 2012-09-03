@@ -319,7 +319,7 @@ static int lws_len(const char *s)
 	return len;
 }
 
-static char *skip_lws(char *s)
+static char *skip_lws(const char *s)
 {
 	enum {
 		SKIP_LWS_STATE_INIT,
@@ -338,7 +338,7 @@ static char *skip_lws(char *s)
 			case '\t':
 				break;
 			default:
-				return s;
+				return (char *)s;
 			}
 			break;
 		case SKIP_LWS_STATE_CR:
@@ -347,7 +347,7 @@ static char *skip_lws(char *s)
 				state = SKIP_LWS_STATE_CRLF;
 				break;
 			default:
-				return s - 1;
+				return (char *)(s - 1);
 			}
 			break;
 		case SKIP_LWS_STATE_CRLF:
@@ -357,7 +357,7 @@ static char *skip_lws(char *s)
 				state = SKIP_LWS_STATE_INIT;
 				break;
 			default:
-				return s - 2;
+				return (char *)(s - 2);
 			}
 			break;
 		default:
