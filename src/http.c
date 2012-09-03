@@ -417,6 +417,66 @@ static int get_quoted_str_len(const char *str, int size)
 	}
 }
 
+/*
+ * Transfer-Encoding       = "Transfer-Encoding" ":" 1#transfer-coding
+ * transfer-coding         = "chunked" | transfer-extension
+ * transfer-extension      = token *( ";" parameter )
+ * All transfer-coding values are case-insensitive
+ */
+static int http_parse_transfer_encoding(struct http_parse_ctx_common *c,
+		const char *fv, int fv_len)
+{
+	const char *tok;
+
+	tok = fv;
+	while (1) {
+		int len = get_token_len(tok);
+
+		if (len == 7 && strncasecmp_c(tok, "chunked") == 0)
+			c->is_chunked = 1;
+		else if (len > 0)
+			c->is_chunked = 0;
+		tok = skip_lws(tok + len);
+		if (*tok == '\0') {
+			break;
+		} else if (*tok == ',') {
+			tok = skip_lws(++tok);
+		} else if (*tok == ';') {
+next_attr:
+			tok = skip_lws(++tok);
+			len = get_token_len(tok);
+			if (len == 0)
+				goto err;
+			tok = skip_lws(tok + len);
+			if (*tok != '=')
+				goto err;
+			tok = skip_lws(++tok);
+			if (*tok == '"')
+				len = get_quoted_str_len(tok,
+						fv_len - (tok - fv));
+			else
+				len = get_token_len(tok);
+			if (len == 0)
+				goto err;
+			tok = skip_lws(tok + len);
+			if (*tok == '\0')
+				break;
+			else if (*tok == ',')
+				tok = skip_lws(++tok);
+			else if (*tok == ';')
+				goto next_attr;
+			else
+				goto err;
+		} else {
+			goto err;
+		}
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
 /* 
        message-header = field-name ":" [ field-value ]
        field-name     = token
@@ -448,57 +508,8 @@ static int http_parse_header_field(http_parser_t *pasr,
 	if (fn_len == 14 && strcasecmp(hdr, "Content-Length") == 0) {
 		c->body_len = strtoull(fv, NULL, 0);
 	} else if (fn_len == 17 && strcasecmp(hdr, "Transfer-Encoding") == 0) {
-		char *tok;
-
-		/*
-		 * Transfer-Encoding       = "Transfer-Encoding" ":" 1#transfer-coding
-		 * transfer-coding         = "chunked" | transfer-extension
-		 * transfer-extension      = token *( ";" parameter )
-		 * All transfer-coding values are case-insensitive
-		 */
-		tok = fv;
-		while (1) {
-			int len = get_token_len(tok);
-
-			if (len == 7 && strncasecmp_c(tok, "chunked") == 0)
-				c->is_chunked = 1;
-			else if (len > 0)
-				c->is_chunked = 0;
-			tok = skip_lws(tok + len);
-			if (*tok == '\0') {
-				break;
-			} else if (*tok == ',') {
-				tok = skip_lws(++tok);
-			} else if (*tok == ';') {
-next_attr:
-				tok = skip_lws(++tok);
-				len = get_token_len(tok);
-				if (len == 0)
-					goto err;
-				tok = skip_lws(tok + len);
-				if (*tok != '=')
-					goto err;
-				tok = skip_lws(++tok);
-				if (*tok == '"')
-					len = get_quoted_str_len(tok,
-							hdr_len - (tok - hdr));
-				else
-					len = get_token_len(tok);
-				if (len == 0)
-					goto err;
-				tok = skip_lws(tok + len);
-				if (*tok == '\0')
-					break;
-				else if (*tok == ',')
-					tok = skip_lws(++tok);
-				else if (*tok == ';')
-					goto next_attr;
-				else
-					goto err;
-			} else {
-				goto err;
-			}
-		}
+		if (http_parse_transfer_encoding(c, fv, fv_len))
+			goto err;
 	} else if (fn_len == 16 && strcasecmp(hdr, "Content-Encoding") == 0) {
 		char *tok;
 
