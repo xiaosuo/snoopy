@@ -63,17 +63,21 @@ int main(int argc, char *argv[])
 		/* token          = 1*<any CHAR except CTLs or separators> */
 		if ((ctab[i] & CTAB_CHAR) && !(ctab[i] & (CTAB_CTL | CTAB_SEP)))
 			ctab[i] |= CTAB_TOKEN;
+
+		/* See isspace(3) */
+		if (i != 0 && strchr(" \f\n\r\t\v", i))
+			ctab[i] |= CTAB_SPACE;
 	}
 
 	printf("#include \"ctab.h\"\n");
 	printf("\n");
-	printf("const unsigned char ctab[256] = {\n");
+	printf("const unsigned short ctab[256] = {\n");
 	for (i = 0; i < 256 / 8; i++) {
 		int j;
 
 		printf("\t");
 		for (j = 0; j < 8; j++)
-			printf("0x%02x,%s", ctab[i * 8 + j], j != 7 ? " " : "");
+			printf("0x%04x,%s", ctab[i * 8 + j], j != 7 ? " " : "");
 		printf("\n");
 	}
 	printf("};\n");
