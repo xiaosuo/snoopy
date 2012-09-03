@@ -119,8 +119,7 @@ enum {
 
 enum {
 	MINOR_STATE_INIT,
-	MINOR_STATE_CR,
-	MINOR_STATE_CRLF,
+	MINOR_STATE_LF,
 };
 
 enum {
@@ -256,35 +255,19 @@ static int http_get_line(struct http_parse_ctx_common *c,
 	const unsigned char *ptr;
 
 	*end = false;
-	switch (c->minor_state) {
-	case MINOR_STATE_INIT:
-		ptr = memmem(data, len, "\r\n", 2);
-		if (ptr) {
-			n = ptr - data;
-			if (http_parse_ctx_common_add_line(c, data, n))
-				goto err;
-			n += 2;
-			*end = true;
-			break;
-		}
-		if (data[len - 1] == '\r')
-			c->minor_state = MINOR_STATE_CR;
+	ptr = memchr(data, '\n', len);
+	if (ptr) {
+		n = ptr - data;
+		if (http_parse_ctx_common_add_line(c, data, n))
+			goto err;
+		if (c->line_len > 0 && c->line[c->line_len - 1] == '\r')
+			c->line[--c->line_len] = '\0';
+		n++;
+		*end = true;
+	} else {
 		n = len;
 		if (http_parse_ctx_common_add_line(c, data, n))
 			goto err;
-		break;
-	case MINOR_STATE_CR:
-		c->minor_state = MINOR_STATE_INIT;
-		if (data[0] == '\n') {
-			n = 1;
-			c->line[--c->line_len] = '\0';
-			*end = true;
-			break;
-		}
-		n = 0;
-		break;
-	default:
-		abort();
 	}
 
 	return n;
@@ -579,7 +562,6 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 	*end = false;
 	switch (c->minor_state) {
 	case MINOR_STATE_INIT:
-	case MINOR_STATE_CR:
 		n = http_get_line(c, &eol, data, len);
 		if (!eol)
 			break;
@@ -587,9 +569,9 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 			*end = true;
 			break;
 		}
-		c->minor_state = MINOR_STATE_CRLF;
+		c->minor_state = MINOR_STATE_LF;
 		break;
-	case MINOR_STATE_CRLF:
+	case MINOR_STATE_LF:
 		c->minor_state = MINOR_STATE_INIT;
 		if (_IS_SPACE(data[0])) {
 			/* LWS */
