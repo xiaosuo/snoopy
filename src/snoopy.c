@@ -308,7 +308,7 @@ static void ip_handler(struct snoopy_ctx *sc, const struct timeval *ts,
 	/* flow */
 	fu.sc = sc;
 	fu.ip = iph;
-	flow_inspect(ts, iph, tcph, bytes, len, stream_inspect, &fu);
+	flow_inspect(iph, tcph, bytes, len, stream_inspect, &fu);
 err:
 	return;
 }
