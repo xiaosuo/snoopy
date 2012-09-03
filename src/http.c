@@ -725,8 +725,6 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		break;
 	case HTTP_STATE_MSG_HDR:
 		n = http_parse_msg_hdr(pasr, c, &end, dir, data, len, user);
-		if (n < 0)
-			goto err;
 		if (!end)
 			break;
 		if (c->is_chunked) {
@@ -798,8 +796,6 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		break;
 	case HTTP_STATE_MSG_CHUNK_TRAILER:
 		n = http_parse_msg_hdr(pasr, c, &end, dir, data, len, user);
-		if (n < 0)
-			goto err;
 		if (!end)
 			break;
 		http_parse_ctx_common_reset(c);
