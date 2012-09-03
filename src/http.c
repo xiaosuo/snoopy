@@ -581,8 +581,6 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 	case MINOR_STATE_INIT:
 	case MINOR_STATE_CR:
 		n = http_get_line(c, &eol, data, len);
-		if (n < 0)
-			goto err;
 		if (!eol)
 			break;
 		if (c->line_len == 0) {
@@ -716,8 +714,6 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 	switch (c->state) {
 	case HTTP_STATE_START_LINE:
 		n = http_get_line(c, &end, data, len);
-		if (n < 0)
-			goto err;
 		if (!end)
 			break;
 		c->state = HTTP_STATE_MSG_HDR;
@@ -774,8 +770,6 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 */
 	case HTTP_STATE_MSG_CHUNK_SIZE:
 		n = http_get_line(c, &end, data, len);
-		if (n < 0)
-			goto err;
 		if (!end)
 			break;
 		c->body_len = strtoull(c->line, NULL, 16);
@@ -796,8 +790,6 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		break;
 	case HTTP_STATE_MSG_CHUNK_CRLF:
 		n = http_get_line(c, &end, data, len);
-		if (n < 0)
-			goto err;
 		if (!end)
 			break;
 		if (c->line_len != 0)
