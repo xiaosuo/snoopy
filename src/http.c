@@ -477,6 +477,53 @@ err:
 	return -1;
 }
 
+/*
+ * Content-Encoding  = "Content-Encoding" ":" 1#content-coding
+ * content-coding   = token
+ * All content-coding values are case-insensitive
+ */
+/*
+ * If multiple encodings have been applied to an entity,
+ * the content codings MUST be listed in the order in which
+ * they were applied.
+ */
+/* We only support one encoding now */
+static int http_parse_content_encoding(struct http_parse_ctx_common *c,
+		const char *fv, int fv_len)
+{
+	const char *tok;
+
+	if (c->streamp) {
+		inflateEnd(c->streamp);
+		free(c->streamp);
+		c->streamp = NULL;
+	}
+
+	tok = fv;
+	while (1) {
+		int len = get_token_len(tok);
+
+		if ((len == 4 && strncasecmp_c(tok, "gzip") == 0) ||
+		    (len == 6 && strncasecmp_c(tok, "x-gzip") == 0))
+			c->ce = HTTP_CE_GZIP;
+		else if (len == 7 && strncasecmp_c(tok, "deflate") == 0)
+			c->ce = HTTP_CE_DEFLATE;
+		else if (len > 0)
+			c->ce = HTTP_CE_NONE;
+		tok = skip_lws(tok + len);
+		if (*tok == '\0')
+			break;
+		else if (*tok == ',')
+			tok = skip_lws(++tok);
+		else
+			goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
 /* 
        message-header = field-name ":" [ field-value ]
        field-name     = token
@@ -511,44 +558,8 @@ static int http_parse_header_field(http_parser_t *pasr,
 		if (http_parse_transfer_encoding(c, fv, fv_len))
 			goto err;
 	} else if (fn_len == 16 && strcasecmp(hdr, "Content-Encoding") == 0) {
-		char *tok;
-
-		/*
-		 * Content-Encoding  = "Content-Encoding" ":" 1#content-coding
-		 * content-coding   = token
-		 * All content-coding values are case-insensitive
-		 */
-		/*
-		 * If multiple encodings have been applied to an entity,
-		 * the content codings MUST be listed in the order in which
-		 * they were applied.
-		 */
-		/* We only support one encoding now */
-		if (c->streamp) {
-			inflateEnd(c->streamp);
-			free(c->streamp);
-			c->streamp = NULL;
-		}
-
-		tok = fv;
-		while (1) {
-			int len = get_token_len(tok);
-
-			if ((len == 4 && strncasecmp_c(tok, "gzip") == 0) ||
-			    (len == 6 && strncasecmp_c(tok, "x-gzip") == 0))
-				c->ce = HTTP_CE_GZIP;
-			else if (len == 7 && strncasecmp_c(tok, "deflate") == 0)
-				c->ce = HTTP_CE_DEFLATE;
-			else if (len > 0)
-				c->ce = HTTP_CE_NONE;
-			tok = skip_lws(tok + len);
-			if (*tok == '\0')
-				break;
-			else if (*tok == ',')
-				tok = skip_lws(++tok);
-			else
-				goto err;
-		}
+		if (http_parse_content_encoding(c, fv, fv_len))
+			goto err;
 	}
 
 	call_header_field_handler(pasr, dir, hdr, fn_len, fv, fv_len, user);
