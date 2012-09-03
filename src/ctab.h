@@ -30,6 +30,7 @@
 #define CTAB_TOKEN	0x0080
 #define CTAB_SPACE	0x0100
 #define CTAB_LWS	0x0200
+#define CTAB_TEXT	0x0400
 
 extern const unsigned short ctab[256];
 

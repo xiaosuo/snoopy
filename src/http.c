@@ -343,7 +343,6 @@ static char *skip_lws(const char *s)
 	}
 }
 
-/* TEXT           = <any OCTET except CTLs, but including LWS> */
 static int text_len(const char *str)
 {
 	if (CTAB_PTR(str) & CTAB_CTL)

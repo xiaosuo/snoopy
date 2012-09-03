@@ -81,6 +81,10 @@ int main(int argc, char *argv[])
 		 */
 		if (i == ' ' || i == '\t')
 			ctab[i] |= CTAB_LWS;
+
+		/* TEXT   = <any OCTET except CTLs, but including LWS> */
+		if ((ctab[i] & CTAB_LWS) || !(ctab[i] & CTAB_CTL))
+			ctab[i] |= CTAB_TEXT;
 	}
 
 	printf("#include \"ctab.h\"\n");
