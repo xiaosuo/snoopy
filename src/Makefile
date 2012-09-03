@@ -24,7 +24,7 @@ install: all
 	install ${TARGETS} ${DESTDIR}${PREFIX}/sbin/
 
 clean:
-	$(RM) *.o ${TARGETS} ctab.c
+	$(RM) *.o ${TARGETS} ctab.c gen_ctab
 
 test:
 	../test/test.sh
