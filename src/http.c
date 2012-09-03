@@ -199,13 +199,11 @@ static int get_token_len(const char *str)
 {
 	int len;
 
-	for (len = 0; CTAB_PTR(str) & CTAB_TOKEN; len++, str++)
-		/* empty */;
+	for (len = 0; is_token(*str); len++)
+		str++;
 
 	return len;
 }
-
-#define _IS_SPACE(c) ((c) == ' ' || (c) == '\t')
 
 /*
         Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
@@ -220,21 +218,21 @@ static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 	if (len == 0)
 		goto err;
 	path = line + len;
-	if (!(CTAB_PTR(path) & CTAB_SPACE))
+	if (!is_space(*path))
 		goto err;
 	*path++ = '\0';
 
-	while (CTAB_PTR(path) & CTAB_SPACE)
+	while (is_space(*path))
 		path++;
 	ver = path;
 	do {
 		if (*ver == '\0')
 			goto err;
 		ver++;
-	} while (!(CTAB_PTR(ver) & CTAB_SPACE));
+	} while (!is_space(*ver));
 	*ver++ = '\0';
 
-	while (CTAB_PTR(ver) & CTAB_SPACE)
+	while (is_space(*ver))
 		ver++;
 	if (*ver == '\0')
 		goto err;
@@ -280,81 +278,21 @@ static int lws_len(const char *s)
 {
 	int len;
 
-	if (s[0] == '\r' && s[1] == '\n' && _IS_SPACE(s[2])) {
-		len = 3;
-		s += 3;
-	} else {
-		len = 0;
-	}
-
-	while (_IS_SPACE(*s)) {
-		len++;
+	for (len = 0; is_lws(*s); len++)
 		s++;
-	}
 
 	return len;
 }
 
 static char *skip_lws(const char *s)
 {
-	enum {
-		SKIP_LWS_STATE_INIT,
-		SKIP_LWS_STATE_CR,
-		SKIP_LWS_STATE_CRLF,
-	} state = SKIP_LWS_STATE_INIT;
-
-	while (1) {
-		switch (state) {
-		case SKIP_LWS_STATE_INIT:
-			switch (*s) {
-			case '\r':
-				state = SKIP_LWS_STATE_CR;
-				break;
-			case ' ':
-			case '\t':
-				break;
-			default:
-				return (char *)s;
-			}
-			break;
-		case SKIP_LWS_STATE_CR:
-			switch (*s) {
-			case '\n':
-				state = SKIP_LWS_STATE_CRLF;
-				break;
-			default:
-				return (char *)(s - 1);
-			}
-			break;
-		case SKIP_LWS_STATE_CRLF:
-			switch (*s) {
-			case ' ':
-			case '\t':
-				state = SKIP_LWS_STATE_INIT;
-				break;
-			default:
-				return (char *)(s - 2);
-			}
-			break;
-		default:
-			abort();
-		}
-		s++;
-	}
-}
-
-static int text_len(const char *str)
-{
-	if (CTAB_PTR(str) & CTAB_CTL)
-		return lws_len(str);
-	else
-		return 1;
+	return (char *)(s + lws_len(s));
 }
 
 /* quoted-pair    = "\" CHAR */
 static bool is_quoted_pair(const char *str)
 {
-	return str[0] == '\\' && (CTAB_PTR(str + 1) & CTAB_CHAR);
+	return str[0] == '\\' && is_char(str[1]);
 }
 
 /**
@@ -381,13 +319,11 @@ static int get_quoted_str_len(const char *str, int size)
 		} else if (*str == '"') {
 			return len + 1;
 		} else {
-			int txt_len = text_len(str);
-
-			if (txt_len == 0)
+			if (!is_text(*str))
 				return 0;
-			len += txt_len;
-			str += txt_len;
-			size -= txt_len;
+			len++;
+			str++;
+			size--;
 		}
 	}
 }
@@ -565,7 +501,7 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 		break;
 	case MINOR_STATE_LF:
 		c->minor_state = MINOR_STATE_INIT;
-		if (_IS_SPACE(data[0])) {
+		if (is_lws(data[0])) {
 			/* LWS */
 			n = 1;
 			if (http_parse_ctx_common_add_line(c, data, n))

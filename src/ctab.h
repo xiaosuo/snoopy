@@ -36,8 +36,6 @@
 
 extern const unsigned short ctab[256];
 
-#define CTAB_PTR(x)	(ctab[*(const unsigned char *)(x)])
-
 #define DEFINE_IS_X(suffix, type) \
 static inline bool is_##suffix(unsigned char c) \
 { \

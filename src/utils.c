@@ -52,8 +52,7 @@ int url_decode(unsigned char *buf, int len)
 		if (c == '%') {
 			unsigned char l;
 
-			if (!(ctab[(c = *buf++)] & CTAB_HEX) ||
-			    !(ctab[(l = *buf++)] & CTAB_HEX))
+			if (!is_hex(c = *buf++) || !is_hex(l = *buf++))
 				return -1;
 			c = (hexval(c) << 4) | hexval(l);
 			len -= 2;
