@@ -250,7 +250,7 @@ err:
        Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
 */
 static int http_get_line(struct http_parse_ctx_common *c,
-		bool *end, const unsigned char *data, int len, void *user)
+		bool *end, const unsigned char *data, int len)
 {
 	int n;
 	const unsigned char *ptr;
@@ -757,7 +757,7 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 
 	switch (c->state) {
 	case HTTP_STATE_START_LINE:
-		n = http_get_line(c, &end, data, len, user);
+		n = http_get_line(c, &end, data, len);
 		if (n < 0)
 			goto err;
 		if (!end)
@@ -815,7 +815,7 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
        trailer        = *(entity-header CRLF)
 */
 	case HTTP_STATE_MSG_CHUNK_SIZE:
-		n = http_get_line(c, &end, data, len, user);
+		n = http_get_line(c, &end, data, len);
 		if (n < 0)
 			goto err;
 		if (!end)
@@ -837,7 +837,7 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 			c->state = HTTP_STATE_MSG_CHUNK_CRLF;
 		break;
 	case HTTP_STATE_MSG_CHUNK_CRLF:
-		n = http_get_line(c, &end, data, len, user);
+		n = http_get_line(c, &end, data, len);
 		if (n < 0)
 			goto err;
 		if (!end)
