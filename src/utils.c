@@ -17,8 +17,8 @@
  */
 
 #include "utils.h"
+#include "ctab.h"
 #include <assert.h>
-#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -52,7 +52,8 @@ int url_decode(unsigned char *buf, int len)
 		if (c == '%') {
 			unsigned char l;
 
-			if (!isxdigit((c = *buf++)) || !isxdigit((l = *buf++)))
+			if (!(ctab[(c = *buf++)] & CTAB_HEX) ||
+			    !(ctab[(l = *buf++)] & CTAB_HEX))
 				return -1;
 			c = (hexval(c) << 4) | hexval(l);
 			len -= 2;
