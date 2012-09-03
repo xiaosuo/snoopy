@@ -276,14 +276,6 @@ err:
 	return -1;
 }
 
-/*
-       LWS            = [CRLF] 1*( SP | HT )
-       CRLF           = CR LF
-       CR             = <US-ASCII CR, carriage return (13)>
-       LF             = <US-ASCII LF, linefeed (10)>
-       SP             = <US-ASCII SP, space (32)>
-       HT             = <US-ASCII HT, horizontal-tab (9)>
- */
 static int lws_len(const char *s)
 {
 	int len;

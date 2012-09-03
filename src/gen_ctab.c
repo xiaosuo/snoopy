@@ -67,6 +67,20 @@ int main(int argc, char *argv[])
 		/* See isspace(3) */
 		if (i != 0 && strchr(" \f\n\r\t\v", i))
 			ctab[i] |= CTAB_SPACE;
+
+		/**
+		 * LWS            = [CRLF] 1*( SP | HT )
+		 * CRLF           = CR LF
+		 * CR             = <US-ASCII CR, carriage return (13)>
+		 * LF             = <US-ASCII LF, linefeed (10)>
+		 * SP             = <US-ASCII SP, space (32)>
+		 * HT             = <US-ASCII HT, horizontal-tab (9)>
+		 *
+		 * Since CRLF and LF in HTTP header field values are
+		 * stripped, so are not included here.
+		 */
+		if (i == ' ' || i == '\t')
+			ctab[i] |= CTAB_LWS;
 	}
 
 	printf("#include \"ctab.h\"\n");
