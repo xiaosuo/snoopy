@@ -489,7 +489,7 @@ err:
  */
 /* We only support one encoding now */
 static int http_parse_content_encoding(struct http_parse_ctx_common *c,
-		const char *fv, int fv_len)
+		const char *fv)
 {
 	const char *tok;
 
@@ -558,7 +558,7 @@ static int http_parse_header_field(http_parser_t *pasr,
 		if (http_parse_transfer_encoding(c, fv, fv_len))
 			goto err;
 	} else if (fn_len == 16 && strcasecmp(hdr, "Content-Encoding") == 0) {
-		if (http_parse_content_encoding(c, fv, fv_len))
+		if (http_parse_content_encoding(c, fv))
 			goto err;
 	}
 
