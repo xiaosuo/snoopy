@@ -256,8 +256,7 @@ struct pppoe_ses_hdr {
 	be16_t			proto;
 } __attribute__((packed));
 
-static void ip_handler(struct snoopy_ctx *sc, const struct timeval *ts,
-		const uint8_t *bytes, int len)
+static void ip_handler(struct snoopy_ctx *sc, const uint8_t *bytes, int len)
 {
 	struct ip *iph;
 	struct tcphdr *tcph;
@@ -343,7 +342,7 @@ again:
 	default:
 		goto err;
 	}
-	ip_handler(sc, ts, bytes, len);
+	ip_handler(sc, bytes, len);
 err:
 	return;
 }
@@ -399,7 +398,7 @@ static void raw_handler(u_char *user, const struct pcap_pkthdr *h,
 {
 	check_pkthdr(h);
 
-	ip_handler((struct snoopy_ctx *)user, &h->ts, bytes, h->len);
+	ip_handler((struct snoopy_ctx *)user, bytes, h->len);
 }
 
 static void save_path(const char *method, const char *path,
