@@ -19,6 +19,8 @@
 #ifndef __CTAB_H
 #define __CTAB_H
 
+#include <stdbool.h>
+
 #define CTAB_CHAR	0x0001
 #define CTAB_UPALPHA	0x0002
 #define CTAB_LOALPHA	0x0004
@@ -35,5 +37,24 @@
 extern const unsigned short ctab[256];
 
 #define CTAB_PTR(x)	(ctab[*(const unsigned char *)(x)])
+
+#define DEFINE_IS_X(suffix, type) \
+static inline bool is_##suffix(unsigned char c) \
+{ \
+	return (ctab[c] & (type)) != 0; \
+}
+
+DEFINE_IS_X(char, CTAB_CHAR);
+DEFINE_IS_X(upalpha, CTAB_UPALPHA);
+DEFINE_IS_X(loalpha, CTAB_LOALPHA);
+DEFINE_IS_X(alpha, CTAB_ALPHA);
+DEFINE_IS_X(digit, CTAB_DIGIT);
+DEFINE_IS_X(ctl, CTAB_CTL);
+DEFINE_IS_X(sep, CTAB_SEP);
+DEFINE_IS_X(hex, CTAB_HEX);
+DEFINE_IS_X(token, CTAB_TOKEN);
+DEFINE_IS_X(space, CTAB_SPACE);
+DEFINE_IS_X(lws, CTAB_LWS);
+DEFINE_IS_X(text, CTAB_TEXT);
 
 #endif /* __CTAB_H */
