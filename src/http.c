@@ -260,10 +260,10 @@ static int http_get_line(struct http_parse_ctx_common *c,
 	case MINOR_STATE_INIT:
 		ptr = memmem(data, len, "\r\n", 2);
 		if (ptr) {
-			ptr += 2;
 			n = ptr - data;
-			if (http_parse_ctx_common_add_line(c, data, n - 2))
+			if (http_parse_ctx_common_add_line(c, data, n))
 				goto err;
+			n += 2;
 			*end = true;
 			break;
 		}
