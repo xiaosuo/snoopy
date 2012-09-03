@@ -574,62 +574,22 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 		const unsigned char *data, int len, void *user)
 {
 	int n;
-	const unsigned char *ptr;
+	bool eol; /* end of line */
 
 	*end = false;
 	switch (c->minor_state) {
 	case MINOR_STATE_INIT:
-		ptr = memmem(data, len, "\r\n", 2);
-		if (ptr) {
-			ptr += 2;
-			n = ptr - data;
-			if (n + c->line_len == 2) {
-				*end = true;
-				break;
-			}
-			if (ptr == data + len) {
-				if (http_parse_ctx_common_add_line(c, data, n))
-					goto err;
-				c->minor_state = MINOR_STATE_CRLF;
-				break;
-			}
-			if (_IS_SPACE(*ptr)) {
-				/* LWS */
-				n++;
-				if (http_parse_ctx_common_add_line(c, data, n))
-					goto err;
-				break;
-			}
-			if (http_parse_ctx_common_add_line(c, data, n - 2))
-				goto err;
-			if (http_parse_header_field(pasr, c, dir, c->line,
-					c->line_len, user))
-				goto err;
-			c->line_len = 0;
-			break;
-		}
-		if (data[len - 1] == '\r')
-			c->minor_state = MINOR_STATE_CR;
-		n = len;
-		if (http_parse_ctx_common_add_line(c, data, n))
-			goto err;
-		break;
 	case MINOR_STATE_CR:
-		if (data[0] == '\n') {
-			if (c->line_len == 1) {
-				n = 1;
-				c->minor_state = MINOR_STATE_INIT;
-				*end = true;
-				break;
-			}
-			c->minor_state = MINOR_STATE_CRLF;
-			n = 1;
-			if (http_parse_ctx_common_add_line(c, data, n))
-				goto err;
+		n = http_get_line(c, &eol, data, len);
+		if (n < 0)
+			goto err;
+		if (!eol)
+			break;
+		if (c->line_len == 0) {
+			*end = true;
 			break;
 		}
-		c->minor_state = MINOR_STATE_INIT;
-		n = 0;
+		c->minor_state = MINOR_STATE_CRLF;
 		break;
 	case MINOR_STATE_CRLF:
 		c->minor_state = MINOR_STATE_INIT;
@@ -640,8 +600,6 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 				goto err;
 			break;
 		}
-		c->line_len -= 2;
-		c->line[c->line_len] = '\0';
 		n = 0;
 		if (http_parse_header_field(pasr, c, dir, c->line,
 				c->line_len, user))
@@ -904,7 +862,7 @@ void print_hdr(const char *name, int name_len, const char *value,
 	if (strcasecmp(name, "Host") == 0)
 		assert(strcmp(value, "www.test.com") == 0);
 	else if (strcasecmp(name, "Test") == 0)
-		assert(strcmp(value, "multi\r\n line") == 0);
+		assert(strcmp(value, "multi line") == 0);
 }
 
 void print_path(const char *method, const char *path, const char *http_version,
