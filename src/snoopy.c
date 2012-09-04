@@ -26,6 +26,7 @@
 #include "http.h"
 #include "snoopy.h"
 #include "time.h"
+#include "list.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -91,11 +92,11 @@ static void show_flow_stat(void)
 }
 
 struct http_req {
-	char		*path;
-	char		*host;
-	bool		is_non_text_res;
-	bool		ignore;
-	struct http_req	*next;
+	char				*path;
+	char				*host;
+	bool				is_non_text_res;
+	bool				ignore;
+	stlist_entry(struct http_req)	link;
 };
 
 static struct http_req *http_req_alloc()
@@ -119,21 +120,20 @@ struct snoopy_ctx {
 };
 
 struct flow_ctx {
-	struct http_req		*req_head;
-	struct http_req		**req_ptail;
-	struct http_req		*req_part;
-	patn_sch_ctx_t		*sch_ctx;
-	http_parse_ctx_t	*http_ctx;
-	bool			stop_inspect;
-	struct snoopy_ctx	*snoopy;
+	stlist_head( , struct http_req)	req_list;
+	struct http_req			*req_part;
+	patn_sch_ctx_t			*sch_ctx;
+	http_parse_ctx_t		*http_ctx;
+	bool				stop_inspect;
+	struct snoopy_ctx		*snoopy;
 };
 
 static void flow_ctx_free_data(struct flow_ctx *fc)
 {
 	struct http_req *r;
 
-	while ((r = fc->req_head)) {
-		fc->req_head = r->next;
+	while ((r = stlist_first(&fc->req_list))) {
+		stlist_del_head(&fc->req_list, r, link);
 		http_req_free(r);
 	}
 	if (fc->req_part)
@@ -156,7 +156,7 @@ static struct flow_ctx *flow_ctx_alloc(struct snoopy_ctx *snoopy)
 
 	if (!fc)
 		goto err;
-	fc->req_ptail = &fc->req_head;
+	stlist_head_init(&fc->req_list);
 	fc->snoopy = snoopy;
 
 	return fc;
@@ -170,7 +170,7 @@ static void flow_ctx_reset(struct flow_ctx *fc)
 
 	flow_ctx_free_data(fc);
 	memset(fc, 0, sizeof(*fc));
-	fc->req_ptail = &fc->req_head;
+	stlist_head_init(&fc->req_list);
 	fc->snoopy = snoopy;
 }
 
@@ -443,13 +443,10 @@ static void end_req(void *user)
 	struct flow_ctx *fc = hu->fc;
 	struct http_req *r;
 
-	if (!(r = fc->req_part))
-		goto err;
-	fc->req_part = NULL;
-	*(fc->req_ptail) = r;
-	fc->req_ptail = &r->next;
-err:
-	return;
+	if ((r = fc->req_part)) {
+		fc->req_part = NULL;
+		stlist_add_tail(&fc->req_list, r, link);
+	}
 }
 
 static void parse_res_hdr_fild(const char *name, int name_len,
@@ -459,7 +456,7 @@ static void parse_res_hdr_fild(const char *name, int name_len,
 	struct flow_ctx *fc = hu->fc;
 	struct http_req *r;
 
-	if (!name || !(r = fc->req_head))
+	if (!name || !(r = stlist_first(&fc->req_list)))
 		goto err;
 	if (name_len == 12 && strcasecmp(name, "Content-Type") == 0) {
 		/*
@@ -535,7 +532,7 @@ static void inspect_body(const unsigned char *data, int len, void *user)
 	struct flow_ctx *fc = hu->fc;
 	struct http_req *r;
 
-	if (!(r = fc->req_head))
+	if (!(r = stlist_first(&fc->req_list)))
 		goto err;
 	if (r->host && r->path && !fc->stop_inspect && !r->ignore &&
 	    (fc->snoopy->inspect_all || !r->is_non_text_res)) {
@@ -564,11 +561,9 @@ static void end_res(void *user)
 	struct flow_ctx *fc = hu->fc;
 	struct http_req *r;
 
-	if (!(r = fc->req_head))
+	if (!(r = stlist_first(&fc->req_list)))
 		goto err;
-	fc->req_head = r->next;
-	if (!fc->req_head)
-		fc->req_ptail = &fc->req_head;
+	stlist_del_head(&fc->req_list, r, link);
 	http_req_free(r);
 	if (fc->sch_ctx)
 		patn_sch_ctx_reset(fc->sch_ctx);
