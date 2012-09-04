@@ -19,12 +19,14 @@
 #ifndef __LIST_H
 #define __LIST_H
 
+/* Singly-linked List */
+
 #define slist_head(name, type) \
 struct name { \
 	type	*first; \
 }
 
-#define SLIST_HEAD_INITIALIZER(head) { NULL }
+#define SLIST_HEAD_INITIALIZER(head) { .first = NULL }
 
 #define slist_head_init(head) \
 do { \
@@ -60,5 +62,48 @@ do { \
 do { \
 	*(pitem) = item->entry.next; \
 } while (0)
+
+/* Singly-linked Tail List */
+
+#define stlist_head(name, type) \
+struct name { \
+	type	*first; \
+	type	**ptail; \
+}
+
+#define STLIST_HEAD_INITIALIZER(head) \
+{ \
+	.first	= NULL, \
+	.ptail	= &(head)->first, \
+}
+
+#define stlist_head_init(head) \
+do { \
+	(head)->first = NULL; \
+	(head)->ptail = &(head)->first; \
+} while (0)
+
+#define stlist_entry(type) \
+struct { \
+	type	*next; \
+}
+
+#define stlist_add_tail(head, item, entry) \
+do { \
+	(item)->entry.next = NULL; \
+	*((head)->ptail) = item; \
+	(head)->ptail = &(item)->entry.next; \
+} while (0)
+
+#define stlist_first(head) ((head)->first)
+
+#define stlist_del_head(head, item, entry) \
+do { \
+	(head)->first = (item)->entry.next; \
+	if (!(head)->first) \
+		(head)->ptail = &(head)->first; \
+} while (0)
+
+#define stlist_for_each slist_for_each
 
 #endif /* __LIST_H */
