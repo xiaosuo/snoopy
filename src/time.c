@@ -28,7 +28,7 @@ struct time_update_handler_iter {
 	slist_entry(struct time_update_handler_iter)	link;
 };
 
-static slist_head(, struct time_update_handler_iter)
+static slist_head( , struct time_update_handler_iter)
 		l_time_update_handler_list =
 		SLIST_HEAD_INITIALIZER(&l_time_update_handler_list);
 
