@@ -19,6 +19,7 @@
 #include "patn.h"
 #include "utils.h"
 #include "queue.h"
+#include "list.h"
 #include <stdio.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -66,15 +67,15 @@ err:
 #define PATN_ALPHABET_SIZE	256
 
 struct patn_res {
-	struct patn	*patn;
-	struct patn_res	*next;
+	struct patn			*patn;
+	slist_entry(struct patn_res)	link;
 };
 
 struct patn_state {
-	struct patn_state	*next[PATN_ALPHABET_SIZE];
-	struct patn_state	*fail;
-	struct patn_res		*res;
-	struct patn_state	*free_next;
+	struct patn_state		*next[PATN_ALPHABET_SIZE];
+	struct patn_state		*fail;
+	slist_head( , struct patn_res)	res;
+	struct patn_state		*free_next;
 };
 
 int patn_state_add_res(struct patn_state *s, struct patn *p)
@@ -84,8 +85,7 @@ int patn_state_add_res(struct patn_state *s, struct patn *p)
 	if (!r)
 		return -1;
 	r->patn = p;
-	r->next = s->res;
-	s->res = r;
+	slist_add_head(&s->res, r, link);
 
 	return 0;
 }
@@ -94,8 +94,8 @@ void patn_state_free(struct patn_state *s)
 {
 	struct patn_res *r;
 
-	while ((r = s->res)) {
-		s->res = r->next;
+	while ((r = slist_first(&s->res))) {
+		slist_del_head(&s->res, r, link);
 		free(r);
 	}
 }
@@ -116,6 +116,7 @@ struct patn_list *patn_list_alloc(void)
 	l->root = calloc(1, sizeof(struct patn_state));
 	if (!l->root)
 		goto err2;
+	slist_head_init(&l->root->res);
 	l->free_list = l->root;
 
 	return l;
@@ -146,6 +147,7 @@ static int patn_list_add_patn(struct patn_list *l, const unsigned char *data,
 			struct patn_state *n = calloc(1, sizeof(*n));
 			if (!n)
 				goto err;
+			slist_head_init(&n->res);
 			s->next[c] = n;
 			n->free_next = l->free_list;
 			l->free_list = n;
@@ -192,7 +194,7 @@ static int patn_list_compile(struct patn_list *l)
 			while (!tmp_s->next[c])
 				tmp_s = tmp_s->fail;
 			s->next[c]->fail = tmp_s->next[c];
-			for (r = s->next[c]->fail->res; r; r = r->next) {
+			slist_for_each(r, &s->next[c]->fail->res, link) {
 				if (patn_state_add_res(s->next[c], r->patn))
 					goto err2;
 			}
@@ -321,7 +323,7 @@ int patn_sch(patn_list_t *l, patn_sch_ctx_t *c, const unsigned char *buf,
 		struct patn_res *r;
 
 		s = s->next[*buf++];
-		for (r = s->res; r; r = r->next) {
+		slist_for_each(r, &s->res, link) {
 			int retval = cb(r->patn->enc, data);
 
 			if (retval < 0) { /* ignore errors */
