@@ -75,7 +75,7 @@ struct patn_state {
 	struct patn_state		*next[PATN_ALPHABET_SIZE];
 	struct patn_state		*fail;
 	slist_head( , struct patn_res)	res;
-	struct patn_state		*free_next;
+	slist_entry(struct patn_state)	link;
 };
 
 int patn_state_add_res(struct patn_state *s, struct patn *p)
@@ -101,9 +101,9 @@ void patn_state_free(struct patn_state *s)
 }
 
 struct patn_list {
-	slist_head( , struct patn)	patn;
-	struct patn_state		*root;
-	struct patn_state		*free_list;
+	slist_head( , struct patn)		patn;
+	struct patn_state			*root;
+	slist_head( , struct patn_state)	free_list;
 };
 
 struct patn_list *patn_list_alloc(void)
@@ -117,7 +117,8 @@ struct patn_list *patn_list_alloc(void)
 	if (!l->root)
 		goto err2;
 	slist_head_init(&l->root->res);
-	l->free_list = l->root;
+	slist_head_init(&l->free_list);
+	slist_add_head(&l->free_list, l->root, link);
 
 	return l;
 err2:
@@ -148,8 +149,7 @@ static int patn_list_add_patn(struct patn_list *l, const unsigned char *data,
 				goto err;
 			slist_head_init(&n->res);
 			s->next[c] = n;
-			n->free_next = l->free_list;
-			l->free_list = n;
+			slist_add_head(&l->free_list, n, link);
 		}
 		s = s->next[c];
 	}
@@ -282,8 +282,8 @@ void patn_list_free(patn_list_t *l)
 		patn_free(p);
 	}
 
-	while ((s = l->free_list)) {
-		l->free_list = s->free_next;
+	while ((s = slist_first(&l->free_list))) {
+		slist_del_head(&l->free_list, s, link);
 		patn_state_free(s);
 	}
 	free(l);
