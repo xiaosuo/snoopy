@@ -17,17 +17,20 @@
  */
 
 #include "time.h"
+#include "list.h"
 #include <stdlib.h>
 
 struct timeval g_time = { 0 };
 
 struct time_update_handler_iter {
-	time_update_handler		h;
-	void				*user;
-	struct time_update_handler_iter	*next;
+	time_update_handler				h;
+	void						*user;
+	slist_entry(struct time_update_handler_iter)	link;
 };
 
-static struct time_update_handler_iter *l_time_update_handler_head = NULL;
+static slist_head(, struct time_update_handler_iter)
+		l_time_update_handler_head =
+		SLIST_HEAD_INITIALIZER(&l_time_update_handler_head);
 
 int time_register_update_handler(time_update_handler h, void *user)
 {
@@ -38,8 +41,7 @@ int time_register_update_handler(time_update_handler h, void *user)
 
 	i->h = h;
 	i->user = user;
-	i->next = l_time_update_handler_head;
-	l_time_update_handler_head = i;
+	slist_add_head(&l_time_update_handler_head, i, link);
 
 	return 0;
 }
@@ -50,7 +52,7 @@ void time_update(const struct timeval *tv)
 		struct time_update_handler_iter *i;
 
 		g_time = *tv;
-		for (i = l_time_update_handler_head; i; i = i->next)
+		slist_for_each(i, &l_time_update_handler_head, link)
 			i->h(&g_time, i->user);
 	}
 }
