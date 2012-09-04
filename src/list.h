@@ -150,4 +150,56 @@ do { \
 
 #define list_for_each slist_for_each
 
+/* Tail List */
+
+#define tlist_head(name, type) \
+struct name { \
+	type	*first; \
+	type	**ptail; \
+}
+
+#define TLIST_HEAD_INITIALIZER(head) \
+{ \
+	.first	= NULL, \
+	.ptail	= &(head)->first, \
+}
+
+#define tlist_head_init(head) \
+do { \
+	(head)->first = NULL; \
+	(head)->ptail = (head)->first; \
+} while (0)
+
+#define tlist_first(head) ((head)->first)
+
+#define tlist_entry(type) \
+struct { \
+	type	*next; \
+	type	**pprev; \
+}
+
+#define tlist_entry_init(entry) \
+do { \
+	(entry)->pprev = NULL; \
+} while (0)
+
+#define tlist_entry_inline(entry) ((entry)->pprev != NULL)
+
+#define tlist_add_tail(head, item, entry) \
+do { \
+	(item)->entry.next = NULL; \
+	*((head)->ptail) = (item); \
+	(item)->entry.pprev = (head)->ptail; \
+	(head)->ptail = &(item)->entry.next; \
+} while (0)
+
+#define tlist_del(head, item, entry) \
+do { \
+	*((item)->entry.pprev) = (item)->entry.next; \
+	if ((item)->entry.next) \
+		(item)->entry.next->entry.pprev = (item)->entry.pprev; \
+	else \
+		(head)->ptail = (item)->entry.pprev; \
+} while (0)
+
 #endif /* __LIST_H */
