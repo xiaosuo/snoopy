@@ -653,7 +653,7 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		n = http_get_line(c, &end, data, len);
 		if (!end)
 			break;
-		c->body_len = strtoull(c->line, NULL, 16);
+		c->body_len = strtoull(__skip_lws(c->line), NULL, 16);
 		if (c->body_len > 0)
 			c->state = HTTP_STATE_MSG_CHUNK_DATA;
 		else
