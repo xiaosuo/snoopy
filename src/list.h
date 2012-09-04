@@ -112,4 +112,42 @@ do { \
 
 #define stlist_for_each slist_for_each
 
+/* List */
+
+#define list_head(name, type) \
+struct name { \
+	type	*first; \
+}
+
+#define LIST_HEAD_INITIALIZER(head)	{ .first = NULL }
+
+#define list_head_init(head) \
+do { \
+	(head)->first = NULL; \
+} while (0)
+
+#define list_entry(type) \
+struct { \
+	type	*next; \
+	type	**pprev; \
+}
+
+#define list_add_head(head, item, entry) \
+do { \
+	(item)->entry.next = (head)->first; \
+	(head)->first = (item); \
+	(item)->entry.pprev = &(head)->first; \
+	if ((item)->entry.next) \
+		(item)->entry.next->entry.pprev = &(item)->entry.next; \
+} while (0)
+
+#define list_del(item, entry) \
+do { \
+	*((item)->entry.pprev) = (item)->entry.next; \
+	if ((item)->entry.next) \
+		(item)->entry.next->entry.pprev = (item)->entry.pprev; \
+} while (0)
+
+#define list_for_each slist_for_each
+
 #endif /* __LIST_H */
