@@ -26,10 +26,10 @@
 #include <string.h>
 
 struct patn {
-	unsigned char	*raw;
-	int		len;
-	char		*enc;
-	struct patn	*next;
+	unsigned char			*raw;
+	int				len;
+	char				*enc;
+	slist_entry(struct patn)	link;
 };
 
 static void patn_free(struct patn *p)
@@ -101,9 +101,9 @@ void patn_state_free(struct patn_state *s)
 }
 
 struct patn_list {
-	struct patn		*patn;
-	struct patn_state	*root;
-	struct patn_state	*free_list;
+	slist_head( , struct patn)	patn;
+	struct patn_state		*root;
+	struct patn_state		*free_list;
 };
 
 struct patn_list *patn_list_alloc(void)
@@ -112,7 +112,7 @@ struct patn_list *patn_list_alloc(void)
 
 	if (!l)
 		goto err;
-	l->patn = NULL;
+	slist_head_init(&l->patn);
 	l->root = calloc(1, sizeof(struct patn_state));
 	if (!l->root)
 		goto err2;
@@ -136,8 +136,7 @@ static int patn_list_add_patn(struct patn_list *l, const unsigned char *data,
 	p = patn_alloc(data, len);
 	if (!p)
 		goto err;
-	p->next = l->patn;
-	l->patn = p;
+	slist_add_head(&l->patn, p, link);
 
 	s = l->root;
 	for (i = 0; i < p->len; i++) {
@@ -278,8 +277,8 @@ void patn_list_free(patn_list_t *l)
 	struct patn *p;
 	struct patn_state *s;
 
-	while ((p = l->patn)) {
-		l->patn = p->next;
+	while ((p = slist_first(&l->patn))) {
+		slist_del_head(&l->patn, p, link);
 		patn_free(p);
 	}
 
