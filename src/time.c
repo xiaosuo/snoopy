@@ -29,8 +29,8 @@ struct time_update_handler_iter {
 };
 
 static slist_head(, struct time_update_handler_iter)
-		l_time_update_handler_head =
-		SLIST_HEAD_INITIALIZER(&l_time_update_handler_head);
+		l_time_update_handler_list =
+		SLIST_HEAD_INITIALIZER(&l_time_update_handler_list);
 
 int time_register_update_handler(time_update_handler h, void *user)
 {
@@ -41,7 +41,7 @@ int time_register_update_handler(time_update_handler h, void *user)
 
 	i->h = h;
 	i->user = user;
-	slist_add_head(&l_time_update_handler_head, i, link);
+	slist_add_head(&l_time_update_handler_list, i, link);
 
 	return 0;
 }
@@ -52,7 +52,7 @@ void time_update(const struct timeval *tv)
 		struct time_update_handler_iter *i;
 
 		g_time = *tv;
-		slist_for_each(i, &l_time_update_handler_head, link)
+		slist_for_each(i, &l_time_update_handler_list, link)
 			i->h(&g_time, i->user);
 	}
 }

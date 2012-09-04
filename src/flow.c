@@ -57,7 +57,7 @@ struct flow {
 	uint16_t			state;
 	uint32_t			fin_seq[PKT_DIR_NUM];
 	struct buf			buf[PKT_DIR_NUM];
-	slist_head(, struct flow_tag)	tag;
+	slist_head(, struct flow_tag)	tag_list;
 	struct flow			*hash_next;
 	struct flow			**hash_pprev;
 	struct flow			*gc_next;
@@ -96,7 +96,7 @@ int flow_add_tag(flow_t *f, int id, void *data, void (*free)(void *data))
 	t->id = id;
 	t->data = data;
 	t->free = free;
-	slist_add_head(&f->tag, t, link);
+	slist_add_head(&f->tag_list, t, link);
 
 	return 0;
 }
@@ -105,7 +105,7 @@ void *flow_get_tag(flow_t *f, int id)
 {
 	struct flow_tag *t;
 
-	slist_for_each(t, &f->tag, link) {
+	slist_for_each(t, &f->tag_list, link) {
 		if (t->id == id)
 			return t->data;
 	}
@@ -117,7 +117,7 @@ void flow_del_tag(flow_t *f, int id)
 {
 	struct flow_tag *t, **pp;
 
-	slist_for_each_pprev(t, pp, &f->tag, link) {
+	slist_for_each_pprev(t, pp, &f->tag_list, link) {
 		if (t->id == id) {
 			slist_del(t, pp, link);
 			t->free(t->data);
@@ -159,8 +159,8 @@ static void flow_free(struct flow *f)
 
 	buf_drain(&f->buf[PKT_DIR_C2S]);
 	buf_drain(&f->buf[PKT_DIR_S2C]);
-	while ((t = slist_first(&f->tag))) {
-		slist_del_head(&f->tag, t, link);
+	while ((t = slist_first(&f->tag_list))) {
+		slist_del_head(&f->tag_list, t, link);
 		t->free(t->data);
 		free(t);
 	}
@@ -192,7 +192,7 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	f->state = FLOW_STATE_INCOMP;
 	buf_init(&f->buf[PKT_DIR_C2S], 0);
 	buf_init(&f->buf[PKT_DIR_S2C], 0);
-	slist_head_init(&f->tag);
+	slist_head_init(&f->tag_list);
 	f->gc_pprev = NULL;
 	++g_flow_cnt;
 	g_flow_stat.create++;

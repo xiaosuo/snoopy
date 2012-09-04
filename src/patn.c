@@ -74,7 +74,7 @@ struct patn_res {
 struct patn_state {
 	struct patn_state		*next[PATN_ALPHABET_SIZE];
 	struct patn_state		*fail;
-	slist_head( , struct patn_res)	res;
+	slist_head( , struct patn_res)	res_list;
 	slist_entry(struct patn_state)	link;
 };
 
@@ -85,7 +85,7 @@ int patn_state_add_res(struct patn_state *s, struct patn *p)
 	if (!r)
 		return -1;
 	r->patn = p;
-	slist_add_head(&s->res, r, link);
+	slist_add_head(&s->res_list, r, link);
 
 	return 0;
 }
@@ -94,14 +94,14 @@ void patn_state_free(struct patn_state *s)
 {
 	struct patn_res *r;
 
-	while ((r = slist_first(&s->res))) {
-		slist_del_head(&s->res, r, link);
+	while ((r = slist_first(&s->res_list))) {
+		slist_del_head(&s->res_list, r, link);
 		free(r);
 	}
 }
 
 struct patn_list {
-	slist_head( , struct patn)		patn;
+	slist_head( , struct patn)		patn_list;
 	struct patn_state			*root;
 	slist_head( , struct patn_state)	free_list;
 };
@@ -112,11 +112,11 @@ struct patn_list *patn_list_alloc(void)
 
 	if (!l)
 		goto err;
-	slist_head_init(&l->patn);
+	slist_head_init(&l->patn_list);
 	l->root = calloc(1, sizeof(struct patn_state));
 	if (!l->root)
 		goto err2;
-	slist_head_init(&l->root->res);
+	slist_head_init(&l->root->res_list);
 	slist_head_init(&l->free_list);
 	slist_add_head(&l->free_list, l->root, link);
 
@@ -137,7 +137,7 @@ static int patn_list_add_patn(struct patn_list *l, const unsigned char *data,
 	p = patn_alloc(data, len);
 	if (!p)
 		goto err;
-	slist_add_head(&l->patn, p, link);
+	slist_add_head(&l->patn_list, p, link);
 
 	s = l->root;
 	for (i = 0; i < p->len; i++) {
@@ -147,7 +147,7 @@ static int patn_list_add_patn(struct patn_list *l, const unsigned char *data,
 			struct patn_state *n = calloc(1, sizeof(*n));
 			if (!n)
 				goto err;
-			slist_head_init(&n->res);
+			slist_head_init(&n->res_list);
 			s->next[c] = n;
 			slist_add_head(&l->free_list, n, link);
 		}
@@ -193,7 +193,7 @@ static int patn_list_compile(struct patn_list *l)
 			while (!tmp_s->next[c])
 				tmp_s = tmp_s->fail;
 			s->next[c]->fail = tmp_s->next[c];
-			slist_for_each(r, &s->next[c]->fail->res, link) {
+			slist_for_each(r, &s->next[c]->fail->res_list, link) {
 				if (patn_state_add_res(s->next[c], r->patn))
 					goto err2;
 			}
@@ -277,8 +277,8 @@ void patn_list_free(patn_list_t *l)
 	struct patn *p;
 	struct patn_state *s;
 
-	while ((p = slist_first(&l->patn))) {
-		slist_del_head(&l->patn, p, link);
+	while ((p = slist_first(&l->patn_list))) {
+		slist_del_head(&l->patn_list, p, link);
 		patn_free(p);
 	}
 
@@ -322,7 +322,7 @@ int patn_sch(patn_list_t *l, patn_sch_ctx_t *c, const unsigned char *buf,
 		struct patn_res *r;
 
 		s = s->next[*buf++];
-		slist_for_each(r, &s->res, link) {
+		slist_for_each(r, &s->res_list, link) {
 			int retval = cb(r->patn->enc, data);
 
 			if (retval < 0) { /* ignore errors */
