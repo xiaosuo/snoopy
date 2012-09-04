@@ -27,6 +27,7 @@
 #include "snoopy.h"
 #include "time.h"
 #include "list.h"
+#include "ctab.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -492,9 +493,14 @@ static void parse_res_hdr_fild(const char *name, int name_len,
 		 * other-range-unit = token
 		 */
 		/* skip bytes-unit */
-		ptr = strchr(value, ' ');
+		ptr = __skip_token(value);
+		if (ptr == value)
+			goto err;
+		value = __skip_space(ptr);
+		if (value == ptr)
+			goto err;
 		/* we can NOT recover from partial contents */
-		if (ptr && strtoull(ptr + 1, NULL, 10) != 0ULL)
+		if (strtoull(value, NULL, 10) != 0ULL)
 			r->ignore = true;
 	}
 err:
