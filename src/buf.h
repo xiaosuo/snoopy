@@ -19,6 +19,7 @@
 #ifndef __BUF_H
 #define __BUF_H
 
+#include "list.h"
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -28,11 +29,11 @@
 #define SEQ_LE(s1, s2) ((int)((s1) - (s2)) <= 0)
 
 struct mb {
-	unsigned char	*head;
-	unsigned char	*data;
-	uint32_t	seq;
-	uint32_t	len;
-	struct mb	*next;
+	unsigned char		*head;
+	unsigned char		*data;
+	uint32_t		seq;
+	uint32_t		len;
+	slist_entry(struct mb)	link;
 };
 
 static inline void mb_free(struct mb *m)
@@ -42,14 +43,14 @@ static inline void mb_free(struct mb *m)
 }
 
 struct buf {
-	uint32_t	seq;
-	struct mb	*first;
+	uint32_t			seq;
+	slist_head( , struct mb)	mb_list;
 };
 
 static inline void buf_init(struct buf *b, uint32_t seq)
 {
 	b->seq = seq;
-	b->first = NULL;
+	slist_head_init(&b->mb_list);
 }
 
 int buf_add(struct buf *h, uint32_t seq, const unsigned char *data,
@@ -57,10 +58,10 @@ int buf_add(struct buf *h, uint32_t seq, const unsigned char *data,
 
 static inline struct mb *buf_del(struct buf *b)
 {
-	if (b->first && b->first->seq == b->seq) {
-		struct mb *m = b->first;
+	struct mb *m;
 
-		b->first = m->next;
+	if ((m = slist_first(&b->mb_list)) && m->seq == b->seq) {
+		slist_del_head(&b->mb_list, m, link);
 		b->seq = m->seq + m->len;
 		return m;
 	}

@@ -67,7 +67,7 @@ int buf_add(struct buf *h, uint32_t seq, const unsigned char *data,
 	if (!SEQ_LT(seq, end))
 		goto err;
 
-	for (pprev = &h->first; (i = *pprev); pprev = &i->next) {
+	slist_for_each_pprev(i, pprev, &h->mb_list, link) {
 		/* seq < i->seq */
 		if (SEQ_LT(seq, i->seq)) {
 			mseq = SEQ_LE(end, i->seq) ? end : i->seq;
@@ -75,8 +75,7 @@ int buf_add(struct buf *h, uint32_t seq, const unsigned char *data,
 			m = mb_alloc(seq, data, mlen);
 			if (!m)
 				goto err;
-			m->next = i;
-			*pprev = m;
+			slist_insert_before(i, pprev, m, link);
 			/* fill in a hole */
 			if (seq + mlen == end)
 				goto out;
@@ -102,8 +101,7 @@ int buf_add(struct buf *h, uint32_t seq, const unsigned char *data,
 		m = mb_alloc(seq, data, end - seq);
 		if (!m)
 			goto err;
-		m->next = NULL;
-		*pprev = m;
+		slist_insert_before(NULL, pprev, m, link);
 	}
 out:
 	return 0;
@@ -117,9 +115,9 @@ void buf_drain_to(struct buf *b, uint32_t seq)
 
 	assert(SEQ_GT(seq, b->seq));
 
-	while ((m = b->first)) {
+	while ((m = slist_first(&b->mb_list))) {
 		if (SEQ_GE(seq, m->seq + m->len)) {
-			b->first = m->next;
+			slist_del_head(&b->mb_list, m, link);
 			mb_free(m);
 			continue;
 		}
@@ -140,8 +138,8 @@ void buf_drain(struct buf *b)
 {
 	struct mb *m;
 
-	while ((m = b->first)) {
-		b->first = m->next;
+	while ((m = slist_first(&b->mb_list))) {
+		slist_del_head(&b->mb_list, m, link);
 		mb_free(m);
 	}
 }

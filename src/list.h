@@ -63,6 +63,12 @@ do { \
 	*(pitem) = item->entry.next; \
 } while (0)
 
+#define slist_insert_before(item, pitem, new, entry) \
+do { \
+	new->entry.next = item; \
+	*(pitem) = new; \
+} while (0)
+
 /* Singly-linked Tail List */
 
 #define stlist_head(name, type) \
