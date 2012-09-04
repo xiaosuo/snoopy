@@ -17,6 +17,7 @@
  */
 
 #include "rule.h"
+#include "list.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -25,17 +26,14 @@
 #include <assert.h>
 
 struct rule {
-	uint32_t	start_ip;
-	uint32_t	end_ip;
-	uint16_t	start_port;
-	uint16_t	end_port;
-	struct rule	*next;
+	uint32_t			start_ip;
+	uint32_t			end_ip;
+	uint16_t			start_port;
+	uint16_t			end_port;
+	stlist_entry(struct rule)	link;
 };
 
-struct rule_list {
-	struct rule	*first;
-	struct rule	**ptail;
-};
+stlist_head(rule_list, struct rule);
 
 static int rule_parse_port_rule(struct rule *r, char *line)
 {
@@ -131,8 +129,7 @@ rule_list_t *rule_list_load(const char *fn)
 	l = malloc(sizeof(*l));
 	if (!l)
 		goto err;
-	l->first = NULL;
-	l->ptail = &l->first;
+	stlist_head_init(l);
 	fp = fopen(fn, "r");
 	if (!fp)
 		goto err2;
@@ -146,9 +143,7 @@ rule_list_t *rule_list_load(const char *fn)
 		r = rule_parse(buf + n);
 		if (!r)
 			goto err3;
-		r->next = NULL;
-		*(l->ptail) = r;
-		l->ptail = &r->next;
+		stlist_add_tail(l, r, link);
 	}
 	if (!feof(fp) || ferror(fp))
 		goto err3;
@@ -169,7 +164,7 @@ bool rule_list_match(rule_list_t *l, be32_t _ip, be16_t _port)
 	uint32_t ip = ntohl(_ip);
 	uint16_t port = ntohs(_port);
 
-	for (r = l->first; r; r = r->next) {
+	stlist_for_each(r, l, link) {
 		if (ip >= r->start_ip && ip <= r->end_ip &&
 		    port >= r->start_port && port <= r->end_port)
 			return true;
@@ -182,8 +177,8 @@ void rule_list_free(rule_list_t *l)
 {
 	struct rule *r;
 
-	while ((r = l->first) != NULL) {
-		l->first = r->next;
+	while ((r = stlist_first(l))) {
+		stlist_del_head(l, r, link);
 		free(r);
 	}
 	free(l);
@@ -196,7 +191,7 @@ int rule_list_dump(rule_list_t *l, const char *fn)
 
 	if (!fp)
 		goto err;
-	for (r = l->first; r; r = r->next) {
+	stlist_for_each(r, l, link) {
 		be32_t ip;
 		char start[INET_ADDRSTRLEN];
 		char end[INET_ADDRSTRLEN];
