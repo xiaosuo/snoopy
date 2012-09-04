@@ -58,8 +58,7 @@ struct flow {
 	uint32_t			fin_seq[PKT_DIR_NUM];
 	struct buf			buf[PKT_DIR_NUM];
 	slist_head(, struct flow_tag)	tag_list;
-	struct flow			*hash_next;
-	struct flow			**hash_pprev;
+	list_entry(struct flow)		hash_link;
 	struct flow			*gc_next;
 	struct flow			**gc_pprev;
 	struct timeval			timeout;
@@ -83,7 +82,7 @@ struct flow_gc_head {
 	},
 };
 
-static struct flow **l_hash_table = NULL;
+static list_head( , struct flow) *l_hash_table = NULL;
 int g_flow_cnt = 0;
 struct flow_stat g_flow_stat = { 0 };
 
@@ -164,9 +163,7 @@ static void flow_free(struct flow *f)
 		t->free(t->data);
 		free(t);
 	}
-	*(f->hash_pprev) = f->hash_next;
-	if (f->hash_next)
-		f->hash_next->hash_pprev = f->hash_pprev;
+	list_del(f, hash_link);
 	flow_gc_del(f);
 	free(f);
 	--g_flow_cnt;
@@ -210,7 +207,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 	int early_drop_limit = FLOW_EARLY_DROP_LIMIT;
 
 	hash &= FLOW_NR_MAX - 1;
-	for (f = l_hash_table[hash]; f; f = f->hash_next) {
+	list_for_each(f, &l_hash_table[hash], hash_link) {
 		if (ip->ip_src.s_addr == f->src &&
 		    ip->ip_dst.s_addr == f->dst &&
 		    tcph->th_sport == f->sport && tcph->th_dport == f->dport) {
@@ -239,7 +236,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 			goto err;
 
 		bucket = random() & (FLOW_NR_MAX - 1);
-		for (f = l_hash_table[bucket]; f; f = f->hash_next) {
+		list_for_each(f, &l_hash_table[bucket], hash_link) {
 			if (f->state == FLOW_STATE_INCOMP)
 				df = f;
 		}
@@ -253,11 +250,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 	f = flow_alloc(ip, tcph);
 	if (!f)
 		goto err;
-	f->hash_next = l_hash_table[hash];
-	l_hash_table[hash] = f;
-	if (f->hash_next)
-		f->hash_next->hash_pprev = &f->hash_next;
-	f->hash_pprev = &l_hash_table[hash];
+	list_add_head(&l_hash_table[hash], f, hash_link);
 	*dir = PKT_DIR_C2S;
 out:
 	return f;
