@@ -57,27 +57,25 @@ struct flow {
 	uint16_t			state;
 	uint32_t			fin_seq[PKT_DIR_NUM];
 	struct buf			buf[PKT_DIR_NUM];
-	slist_head(, struct flow_tag)	tag_list;
+	slist_head( , struct flow_tag)	tag_list;
 	list_entry(struct flow)		hash_link;
-	struct flow			*gc_next;
-	struct flow			**gc_pprev;
+	tlist_entry(struct flow)	gc_link;
 	struct timeval			timeout;
 };
 
 #define FLOW_NR_MAX		(1 << 20)
 #define FLOW_EARLY_DROP_LIMIT	10
 
-struct flow_gc_head {
-	struct flow	*head;
-	struct flow	**ptail;
-	time_t		timeout;
-} flow_gc_head[FLOW_STATE_NUM] = {
+struct flow_gc_list {
+	tlist_head( , struct flow)	list;
+	time_t				timeout;
+} flow_gc_list[FLOW_STATE_NUM] = {
 	[FLOW_STATE_INCOMP] = {
-		.ptail		= &flow_gc_head[FLOW_STATE_INCOMP].head,
+		.list		= TLIST_HEAD_INITIALIZER(&flow_gc_list[FLOW_STATE_INCOMP].list),
 		.timeout	= 30,
 	},
 	[FLOW_STATE_COMP] = {
-		.ptail		= &flow_gc_head[FLOW_STATE_COMP].head,
+		.list		= TLIST_HEAD_INITIALIZER(&flow_gc_list[FLOW_STATE_COMP].list),
 		.timeout	= 300,
 	},
 };
@@ -128,27 +126,20 @@ void flow_del_tag(flow_t *f, int id)
 
 static void flow_gc_del(struct flow *f)
 {
-	if (!f->gc_pprev)
+	if (!tlist_entry_inline(&f->gc_link))
 		return;
-	*(f->gc_pprev) = f->gc_next;
-	if (f->gc_next)
-		f->gc_next->gc_pprev = f->gc_pprev;
-	else
-		flow_gc_head[f->state].ptail = f->gc_pprev;
-	f->gc_pprev = NULL;
+	tlist_del(&flow_gc_list[f->state].list, f, gc_link);
+	tlist_entry_init(&f->gc_link);
 }
 
 static void flow_gc_add(struct flow *f)
 {
-	struct flow_gc_head *h = &flow_gc_head[f->state];
+	struct flow_gc_list *l = &flow_gc_list[f->state];
 
-	assert(!f->gc_pprev);
+	assert(!tlist_entry_inline(&f->gc_link));
 
-	f->gc_next = NULL;
-	*(h->ptail) = f;
-	f->gc_pprev = h->ptail;
-	h->ptail = &f->gc_next;
-	f->timeout.tv_sec = g_time.tv_sec + h->timeout;
+	tlist_add_tail(&l->list, f, gc_link);
+	f->timeout.tv_sec = g_time.tv_sec + l->timeout;
 	f->timeout.tv_usec = g_time.tv_usec;
 }
 
@@ -190,7 +181,7 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	buf_init(&f->buf[PKT_DIR_C2S], 0);
 	buf_init(&f->buf[PKT_DIR_S2C], 0);
 	slist_head_init(&f->tag_list);
-	f->gc_pprev = NULL;
+	tlist_entry_init(&f->gc_link);
 	++g_flow_cnt;
 	g_flow_stat.create++;
 
@@ -264,9 +255,9 @@ static void flow_gc(const struct timeval *tv, void *user)
 	int state;
 
 	for (state = 0; state < FLOW_STATE_NUM; state++) {
-		struct flow_gc_head *h = &flow_gc_head[state];
+		struct flow_gc_list *l = &flow_gc_list[state];
 
-		while ((f = h->head)) {
+		while ((f = tlist_first(&l->list))) {
 			if (timercmp(&f->timeout, tv, >))
 				break;
 			flow_free(f);
