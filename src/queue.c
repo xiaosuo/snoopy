@@ -17,26 +17,22 @@
  */
 
 #include "queue.h"
+#include "list.h"
 #include <stdlib.h>
 
 struct queue_item {
-	void			*data;
-	struct queue_item	*next;
+	void				*data;
+	stlist_entry(struct queue_item)	link;
 };
 
-struct queue {
-	struct queue_item	*first;
-	struct queue_item	**ptail;
-};
+stlist_head(queue, struct queue_item);
 
 queue_t *queue_alloc(void)
 {
 	queue_t *q = malloc(sizeof(*q));
 
-	if (q) {
-		q->first = NULL;
-		q->ptail = &q->first;
-	}
+	if (q)
+		stlist_head_init(q);
 
 	return q;
 }
@@ -55,23 +51,19 @@ int queue_add(queue_t *q, void *data)
 	if (!i)
 		return -1;
 	i->data = data;
-	i->next = NULL;
-	*(q->ptail) = i;
-	q->ptail = &i->next;
+	stlist_add_tail(q, i, link);
 
 	return 0;
 }
 
 void *queue_del(queue_t *q)
 {
-	struct queue_item *i = q->first;
+	struct queue_item *i = stlist_first(q);
 
 	if (i) {
 		void *data = i->data;
 
-		q->first = i->next;
-		if (q->ptail == &i->next)
-			q->ptail = &q->first;
+		stlist_del_head(q, i, link);
 		free(i);
 
 		return data;
