@@ -195,11 +195,11 @@ void http_parse_ctx_free(http_parse_ctx_t *ctx)
 	free(ctx);
 }
 
-/*
-        Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
-       HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
-       DIGIT          = <any US-ASCII digit "0".."9">
-*/
+/**
+ * Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
+ * HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
+ * DIGIT          = <any US-ASCII digit "0".."9">
+ */
 static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 {
 	char *path, *ver;
@@ -222,7 +222,21 @@ static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 	*ver++ = '\0';
 
 	ver = __skip_space(ver);
-	if (*ver == '\0')
+	if (strncasecmp(ver, "HTTP", 4) != 0)
+		goto err;
+	ver = __skip_space(ver + 4);
+	if (*ver != '/')
+		goto err;
+	ver = __skip_space(ver + 1);
+	if (!is_digit(*ver) || atoi(ver) != 1)
+		goto err;
+	ver = __skip_space(__skip_digit(ver + 1));
+	if (*ver != '.')
+		goto err;
+	ver = __skip_space(ver + 1);
+	if (!is_digit(*ver))
+		goto err;
+	if (*__skip_space(__skip_digit(ver + 1)) != '\0')
 		goto err;
 
 	call_request_line_handler(pasr, line, path, ver, user);
