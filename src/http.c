@@ -450,6 +450,8 @@ static int http_parse_header_field(http_parser_t *pasr,
 	hdr[fn_len] = '\0';
 	fv = __skip_lws(++fv);
 	fv_len = hdr_len - (fv - hdr);
+	while (fv_len > 0 && is_lws(fv[fv_len - 1]))
+		fv[--fv_len] = '\0';
 
 	if (fn_len == 14 && strcasecmp(hdr, "Content-Length") == 0) {
 		c->body_len = strtoull(fv, NULL, 0);
