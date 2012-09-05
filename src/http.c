@@ -661,6 +661,11 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		n = http_get_line(c, &end, data, len);
 		if (!end)
 			break;
+		/* ignore empty lines before start lines */
+		if (__space_len(c->line) == c->line_len) {
+			c->line_len = 0;
+			break;
+		}
 		c->state = HTTP_STATE_MSG_HDR;
 		if (dir == PKT_DIR_C2S) {
 			if (http_parse_request_line(pasr, c->line, user))
