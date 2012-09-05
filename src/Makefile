@@ -1,13 +1,13 @@
-CFLAGS += -Wall -O2 -D_GNU_SOURCE
+CFLAGS += -Wall -D_GNU_SOURCE
 LDFLAGS += -lpcap -lz
 TARGETS := snoopy
 OBJS := $(filter-out gen_ctab.o,$(patsubst %.c,%.o,$(wildcard *.c))) ctab.o
 PREFIX ?= /usr/local
 
 ifeq (${DEBUG},)
-CFLAGS += -DNDEBUG
+CFLAGS += -DNDEBUG -O2
 else
-CFLAGS += -g
+CFLAGS += -g -O0
 endif
 
 .PHONY: all install clean test
