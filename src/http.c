@@ -29,6 +29,7 @@
 
 struct http_parser {
 	http_request_line_handler	request_line;
+	http_status_line_handler	status_line;
 	http_header_field_handler	header_field[PKT_DIR_NUM];
 	http_body_handler		body[PKT_DIR_NUM];
 	http_msg_end_handler		msg_end[PKT_DIR_NUM];
@@ -50,6 +51,12 @@ void http_parser_set_request_line_handler(http_parser_t *pasr,
 	pasr->request_line = h;
 }
 
+void http_parser_set_status_line_handler(http_parser_t *pasr,
+		http_status_line_handler h)
+{
+	pasr->status_line = h;
+}
+
 void http_parser_set_header_field_handler(http_parser_t *pasr, int dir,
 		http_header_field_handler h)
 {
@@ -68,12 +75,18 @@ void http_parser_set_msg_end_handler(http_parser_t *pasr, int dir,
 	pasr->msg_end[dir] = h;
 }
 
-static void call_request_line_handler(http_parser_t *pasr,
-		const char *method, const char *path, int minor_ver,
-		void *user)
+static void call_request_line_handler(http_parser_t *pasr, const char *method,
+		const char *path, int minor_ver, void *user)
 {
 	if (pasr->request_line)
 		pasr->request_line(method, path, minor_ver, user);
+}
+
+static void call_status_line_handler(http_parser_t *pasr, int minor_ver,
+		int status_code, const char *reason_phase, void *user)
+{
+	if (pasr->status_line)
+		pasr->status_line(minor_ver, status_code, reason_phase, user);
 }
 
 static void call_header_field_handler(http_parser_t *pasr, int dir,
@@ -260,9 +273,28 @@ err:
 	return -1;
 }
 
-/*
-       Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
-*/
+/* Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF */
+static int http_parse_status_line(http_parser_t *pasr, char *line, void *user)
+{
+	int status_code, minor_ver = http_parse_version(line, &line);
+
+	if (minor_ver < 0)
+		goto err;
+	if (!is_space(*line))
+		goto err;
+	line = __skip_space(line + 1);
+	if (!is_digit(*line))
+		goto err;
+	status_code = atoi(line);
+	line = __skip_space(__skip_digit(line + 1));
+
+	call_status_line_handler(pasr, minor_ver, status_code, line, user);
+
+	return 0;
+err:
+	return -1;
+}
+
 static int http_get_line(struct http_parse_ctx_common *c,
 		bool *end, const unsigned char *data, int len)
 {
@@ -632,6 +664,9 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		c->state = HTTP_STATE_MSG_HDR;
 		if (dir == PKT_DIR_C2S) {
 			if (http_parse_request_line(pasr, c->line, user))
+				goto err;
+		} else {
+			if (http_parse_status_line(pasr, c->line, user))
 				goto err;
 		}
 		c->line_len = 0;

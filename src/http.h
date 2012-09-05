@@ -21,6 +21,8 @@
 
 typedef void (*http_request_line_handler)(const char *method, const char *path,
 		int minor_ver, void *user);
+typedef void (*http_status_line_handler)(int minor_ver, int status_code,
+		const char *reason_phase, void *user);
 typedef void (*http_header_field_handler)(const char *name, int name_len,
 		const char *value, int value_len, void *user);
 typedef void (*http_body_handler)(const unsigned char *data, int len,
@@ -33,6 +35,8 @@ http_parser_t *http_parser_alloc(void);
 void http_parser_free(http_parser_t *pasr);
 void http_parser_set_request_line_handler(http_parser_t *pasr,
 		http_request_line_handler h);
+void http_parser_set_status_line_handler(http_parser_t *pasr,
+		http_status_line_handler h);
 void http_parser_set_header_field_handler(http_parser_t *pasr, int dir,
 		http_header_field_handler h);
 void http_parser_set_body_handler(http_parser_t *pasr, int dir,
