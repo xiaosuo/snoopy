@@ -20,7 +20,7 @@
 #define __HTTP_H
 
 typedef void (*http_request_line_handler)(const char *method, const char *path,
-		const char *http_version, void *user);
+		int minor_ver, void *user);
 typedef void (*http_header_field_handler)(const char *name, int name_len,
 		const char *value, int value_len, void *user);
 typedef void (*http_body_handler)(const unsigned char *data, int len,

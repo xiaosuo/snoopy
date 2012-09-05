@@ -69,11 +69,11 @@ void http_parser_set_msg_end_handler(http_parser_t *pasr, int dir,
 }
 
 static void call_request_line_handler(http_parser_t *pasr,
-		const char *method, const char *path, const char *http_version,
+		const char *method, const char *path, int minor_ver,
 		void *user)
 {
 	if (pasr->request_line)
-		pasr->request_line(method, path, http_version, user);
+		pasr->request_line(method, path, minor_ver, user);
 }
 
 static void call_header_field_handler(http_parser_t *pasr, int dir,
@@ -203,7 +203,7 @@ void http_parse_ctx_free(http_parse_ctx_t *ctx)
 static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 {
 	char *path, *ver;
-	int len = __token_len(line);
+	int minor_ver, len = __token_len(line);
 
 	if (len == 0)
 		goto err;
@@ -236,10 +236,11 @@ static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 	ver = __skip_space(ver + 1);
 	if (!is_digit(*ver))
 		goto err;
+	minor_ver = atoi(ver);
 	if (*__skip_space(__skip_digit(ver + 1)) != '\0')
 		goto err;
 
-	call_request_line_handler(pasr, line, path, ver, user);
+	call_request_line_handler(pasr, line, path, minor_ver, user);
 
 	return 0;
 err:
@@ -750,7 +751,7 @@ void print_hdr(const char *name, int name_len, const char *value,
 		assert(strcmp(value, "multi line") == 0);
 }
 
-void print_path(const char *method, const char *path, const char *http_version,
+void print_path(const char *method, const char *path, int minor_ver,
 		void *user)
 {
 	assert(strcmp(path, "/test") == 0);

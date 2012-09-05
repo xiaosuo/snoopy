@@ -403,7 +403,7 @@ static void raw_handler(u_char *user, const struct pcap_pkthdr *h,
 }
 
 static void save_path(const char *method, const char *path,
-		const char *http_version, void *user)
+		int minor_ver, void *user)
 {
 	struct http_user *hu = user;
 	struct flow_ctx *fc = hu->fc;
