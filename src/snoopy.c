@@ -429,6 +429,12 @@ static void save_host(const char *name, int name_len,
 	if (!(r = fc->req_part))
 		goto err;
 	if (name_len == 4 && strcasecmp(name, "Host") == 0) {
+		int i;
+
+		for (i = 0; i < value_len; i++) {
+			if (is_space(value[i]))
+				goto err;
+		}
 		if (r->host)
 			free(r->host);
 		pr_debug("host: %s\n", value);
