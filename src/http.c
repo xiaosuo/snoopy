@@ -195,6 +195,32 @@ void http_parse_ctx_free(http_parse_ctx_t *ctx)
 	free(ctx);
 }
 
+static int http_parse_version(char *ver, char **end)
+{
+	int minor_ver;
+
+	if (strncasecmp(ver, "HTTP", 4) != 0)
+		goto err;
+	ver = __skip_space(ver + 4);
+	if (*ver != '/')
+		goto err;
+	ver = __skip_space(ver + 1);
+	if (!is_digit(*ver) || atoi(ver) != 1)
+		goto err;
+	ver = __skip_space(__skip_digit(ver + 1));
+	if (*ver != '.')
+		goto err;
+	ver = __skip_space(ver + 1);
+	if (!is_digit(*ver))
+		goto err;
+	minor_ver = atoi(ver);
+	*end = __skip_digit(ver + 1);
+
+	return minor_ver;
+err:
+	return -1;
+}
+
 /**
  * Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
  * HTTP-Version   = "HTTP" "/" 1*DIGIT "." 1*DIGIT
@@ -221,23 +247,10 @@ static int http_parse_request_line(http_parser_t *pasr, char *line, void *user)
 	} while (!is_space(*ver));
 	*ver++ = '\0';
 
-	ver = __skip_space(ver);
-	if (strncasecmp(ver, "HTTP", 4) != 0)
+	minor_ver = http_parse_version(__skip_space(ver), &ver);
+	if (minor_ver < 0)
 		goto err;
-	ver = __skip_space(ver + 4);
-	if (*ver != '/')
-		goto err;
-	ver = __skip_space(ver + 1);
-	if (!is_digit(*ver) || atoi(ver) != 1)
-		goto err;
-	ver = __skip_space(__skip_digit(ver + 1));
-	if (*ver != '.')
-		goto err;
-	ver = __skip_space(ver + 1);
-	if (!is_digit(*ver))
-		goto err;
-	minor_ver = atoi(ver);
-	if (*__skip_space(__skip_digit(ver + 1)) != '\0')
+	if (*__skip_space(ver) != '\0')
 		goto err;
 
 	call_request_line_handler(pasr, line, path, minor_ver, user);
