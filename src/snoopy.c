@@ -190,7 +190,6 @@ static void flow_ctx_reset(struct flow_ctx *fc)
 struct http_user {
 	struct flow_ctx		*fc;
 	struct ip		*ip;
-	const struct timeval	*ts;
 };
 
 struct flow_user {
@@ -198,8 +197,8 @@ struct flow_user {
 	struct ip		*ip;
 };
 
-static void stream_inspect(flow_t *f, int dir, const struct timeval *ts,
-		const unsigned char *data, int len, void *user)
+static void stream_inspect(flow_t *f, int dir, const unsigned char *data,
+		int len, void *user)
 {
 	struct flow_ctx *fc;
 	struct flow_user *fu = user;
@@ -220,7 +219,6 @@ static void stream_inspect(flow_t *f, int dir, const struct timeval *ts,
 
 	hu.fc = fc;
 	hu.ip = fu->ip;
-	hu.ts = ts;
 	if (!fc->http_ctx && !(fc->http_ctx = http_parse_ctx_alloc()))
 		goto stop_inspect;
 	if (http_parse(fu->sc->pasr, fc->http_ctx, dir, data, len, &hu) ||
@@ -530,7 +528,6 @@ err:
 }
 
 struct patn_user {
-	const struct timeval	*ts;
 	struct ip		*ip;
 	struct http_req		*r;
 	struct flow_ctx		*fc;
@@ -542,7 +539,7 @@ static int log_keyword(const char *k, void *user)
 	struct flow_ctx *fc = pu->fc;
 	int r;
 
-	r = log_write(pu->ts, pu->ip->ip_dst.s_addr,
+	r = log_write(&g_time, pu->ip->ip_dst.s_addr,
 			pu->ip->ip_src.s_addr, pu->r->host, pu->r->path, k);
 	if (r < 0)
 		return r;
@@ -568,7 +565,6 @@ static void inspect_text(const unsigned char *data, int len, void *user)
 		exit(EXIT_FAILURE);
 #endif
 	struct patn_user pn = {
-		.ts	= hu->ts,
 		.ip	= hu->ip,
 		.r	= slist_first(&fc->req_list),
 		.fc	= fc,

@@ -48,9 +48,8 @@ int flow_add_tag(flow_t *f, int id, void *data, void (*free)(void *data));
 void *flow_get_tag(flow_t *f, int id);
 void flow_del_tag(flow_t *f, int id);
 
-typedef void (*flow_data_handler)(flow_t *f, int dir,
-		const struct timeval *ts, const unsigned char *data, int len,
-		void *user);
+typedef void (*flow_data_handler)(flow_t *f, int dir, const unsigned char *data,
+		int len, void *user);
 
 int flow_init(void);
 int flow_inspect(struct ip *ip, struct tcphdr *tcph, const unsigned char *data,

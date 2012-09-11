@@ -335,10 +335,10 @@ int flow_inspect(struct ip *ip, struct tcphdr *tcph, const unsigned char *data,
 		if (seq == buf->seq) {
 			struct mb *m;
 
-			h(f, dir, &g_time, data, len, user);
+			h(f, dir, data, len, user);
 			buf_drain_to(buf, seq + len);
 			while ((m = buf_del(buf))) {
-				h(f, dir, &g_time, m->data, m->len, user);
+				h(f, dir, m->data, m->len, user);
 				mb_free(m);
 			}
 		} else if (buf_add(buf, seq, data, len)) {
