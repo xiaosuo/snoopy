@@ -16,26 +16,17 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __UTILS_H
-#define __UTILS_H
+#ifndef __HTML_H
+#define __HTML_H
 
-#include <stdlib.h>
+typedef struct html_parse_ctx html_parse_ctx_t;
+html_parse_ctx_t *html_parse_ctx_alloc(const char *charset);
+void html_parse_ctx_free(html_parse_ctx_t *ctx);
 
-#define MIN(x, y) (((x) < (y)) ? (x) : (y))
-#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+typedef void (*html_data_handler)(const unsigned char *data, int len,
+		void *user);
 
-int url_decode(unsigned char *buf, int len);
-void *xmemdup(const void *data, int len);
-int if_get_mtu(const char *name);
-#ifndef __GLIBC__
-void *memmem(const void *haystack, size_t haystacklen,
-		const void *needle, size_t needlelen);
-#endif
+int html_parse(html_parse_ctx_t *ctx, const unsigned char *data, int len,
+		html_data_handler h, void *user);
 
-#define strncasecmp_c(str1, str2) strncasecmp(str1, str2, sizeof(str2) - 1)
-
-size_t strlncpy(char *dst, size_t size, const char *src, size_t len);
-size_t strlncat(char *dst, size_t size, const char *src, size_t len);
-void strtolower(char *str);
-
-#endif /* __UTILS_H */
+#endif /* __HTML_H */

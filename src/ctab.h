@@ -33,6 +33,9 @@
 #define CTAB_SPACE	0x0100
 #define CTAB_LWS	0x0200
 #define CTAB_TEXT	0x0400
+#define CTAB_TAG_NAME	0x0800
+#define CTAB_ATTR_NAME	0x1000
+#define CTAB_ATTR_VAL	0x2000
 
 extern const unsigned short ctab[256];
 
@@ -92,5 +95,8 @@ DEFINE_IS_X(token, CTAB_TOKEN);
 DEFINE_IS_X(space, CTAB_SPACE);
 DEFINE_IS_X(lws, CTAB_LWS);
 DEFINE_IS_X(text, CTAB_TEXT);
+DEFINE_IS_X(tag_name, CTAB_TAG_NAME);
+DEFINE_IS_X(attr_name, CTAB_ATTR_NAME);
+DEFINE_IS_X(attr_val, CTAB_ATTR_VAL);
 
 #endif /* __CTAB_H */

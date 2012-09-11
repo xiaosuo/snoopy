@@ -85,6 +85,15 @@ int main(int argc, char *argv[])
 		/* TEXT   = <any OCTET except CTLs, but including LWS> */
 		if ((ctab[i] & CTAB_LWS) || !(ctab[i] & CTAB_CTL))
 			ctab[i] |= CTAB_TEXT;
+
+		if (i != 0 && !(ctab[i] & CTAB_SPACE) && !strchr("/>", i))
+			ctab[i] |= CTAB_TAG_NAME;
+
+		if (i != 0 && !(ctab[i] & CTAB_SPACE) && !strchr("/=>\"'<", i))
+			ctab[i] |= CTAB_ATTR_NAME;
+
+		if (i != 0 && !(ctab[i] & CTAB_SPACE) && !strchr(">\"'<=`", i))
+			ctab[i] |= CTAB_ATTR_VAL;
 	}
 
 	printf("#include \"ctab.h\"\n");

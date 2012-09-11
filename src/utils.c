@@ -113,6 +113,44 @@ void *memmem(const void *haystack, size_t haystacklen,
 }
 #endif
 
+size_t strlncpy(char *dst, size_t size, const char *src, size_t len)
+{
+	size_t n = 0;
+
+	assert(size > 0);
+
+	while (size > 1 && len > 0 && *src) {
+		*dst++ = *src++;
+		n++;
+		size--;
+		len--;
+	}
+	*dst = '\0';
+
+	return n;
+}
+
+size_t strlncat(char *dst, size_t size, const char *src, size_t len)
+{
+	size_t n = strlen(dst);
+
+	if (size - n > 1)
+		n += strlncpy(dst + n, size - n, src, len);
+
+	return n;
+}
+
+void strtolower(char *str)
+{
+	int c;
+
+	while ((c = *(unsigned char *)str)) {
+		if (is_upalpha(c))
+			*(unsigned char *)str = c + ('a' - 'A');
+		str++;
+	}
+}
+
 #ifdef TEST
 #include <assert.h>
 #include <stdio.h>

@@ -28,6 +28,7 @@
 #include "time.h"
 #include "list.h"
 #include "ctab.h"
+#include "html.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -92,10 +93,17 @@ static void show_flow_stat(void)
 	printf("flow early drop: %" PRIu64 "\n", g_flow_stat.early_drop);
 }
 
+enum http_content_type {
+	HTTP_CT_UNSUP,
+	HTTP_CT_PLAIN,
+	HTTP_CT_HTML,
+};
+
 struct http_req {
 	char				*path;
 	char				*host;
-	bool				is_non_text_res;
+	html_parse_ctx_t		*html_ctx;
+	enum http_content_type		ct;
 	bool				ignore;
 	stlist_entry(struct http_req)	link;
 };
@@ -109,6 +117,8 @@ static void http_req_free(struct http_req *r)
 {
 	free(r->path);
 	free(r->host);
+	if (r->html_ctx)
+		html_parse_ctx_free(r->html_ctx);
 	free(r);
 }
 
@@ -478,10 +488,16 @@ static void parse_res_hdr_fild(const char *name, int name_len,
 		 * The type, subtype, and parameter attribute names are case-
 		 * insensitive.
 		 */
-		if (strncasecmp_c(value, "text/") != 0 &&
-		    strncasecmp_c(value, "application/xhtml+xml") != 0 &&
-		    strncasecmp_c(value, "application/xml") != 0)
-			r->is_non_text_res = true;
+		if (strncasecmp_c(value, "text/") == 0) {
+			if (strncasecmp_c(value + 5, "html") == 0 ||
+			    strncasecmp_c(value + 5, "xml") == 0)
+				r->ct = HTTP_CT_HTML;
+			else
+				r->ct = HTTP_CT_PLAIN;
+		} else if (strncasecmp_c(value, "application/xhtml+xml") == 0 ||
+			   strncasecmp_c(value, "application/xml") == 0) {
+			r->ct = HTTP_CT_HTML;
+		}
 	} else if (name_len == 13 && strcasecmp(name, "Content-Range") == 0) {
 		const char *ptr;
 
@@ -538,6 +554,31 @@ static int log_keyword(const char *k, void *user)
 	return 0;
 }
 
+static void inspect_text(const unsigned char *data, int len, void *user)
+{
+	struct http_user *hu = user;
+	struct flow_ctx *fc = hu->fc;
+
+	if (fc->stop_inspect)
+		goto err;
+	if (!fc->sch_ctx && !(fc->sch_ctx = patn_sch_ctx_alloc()))
+		goto err;
+#ifndef NDEBUG
+	if (write(STDOUT_FILENO, data, len) != len)
+		exit(EXIT_FAILURE);
+#endif
+	struct patn_user pn = {
+		.ts	= hu->ts,
+		.ip	= hu->ip,
+		.r	= slist_first(&fc->req_list),
+		.fc	= fc,
+	};
+	patn_sch(fc->snoopy->patn_list, fc->sch_ctx, data, len, log_keyword,
+		 &pn);
+err:
+	return;
+}
+
 static void inspect_body(const unsigned char *data, int len, void *user)
 {
 	struct http_user *hu = user;
@@ -546,22 +587,20 @@ static void inspect_body(const unsigned char *data, int len, void *user)
 
 	if (!(r = stlist_first(&fc->req_list)))
 		goto err;
-	if (r->host && r->path && !fc->stop_inspect && !r->ignore &&
-	    (fc->snoopy->inspect_all || !r->is_non_text_res)) {
-		struct patn_user pn = {
-			.ts	= hu->ts,
-			.ip	= hu->ip,
-			.r	= r,
-			.fc	= fc,
-		};
-		if (!fc->sch_ctx && !(fc->sch_ctx = patn_sch_ctx_alloc()))
-			goto err;
-#ifndef NDEBUG
-		if (write(STDOUT_FILENO, data, len) != len)
-			exit(EXIT_FAILURE);
-#endif
-		patn_sch(fc->snoopy->patn_list, fc->sch_ctx, data, len,
-				log_keyword, &pn);
+	if (r->host && r->path && !fc->stop_inspect && !r->ignore) {
+		if (r->ct == HTTP_CT_HTML) {
+			if (!r->html_ctx &&
+			    !(r->html_ctx = html_parse_ctx_alloc(NULL)))
+				goto err;
+			if (html_parse(r->html_ctx, data, len, inspect_text,
+				       hu)) {
+				r->ignore = true;
+				goto err;
+			}
+		} else if (r->ct != HTTP_CT_UNSUP ||
+			   fc->snoopy->inspect_all) {
+			inspect_text(data, len, user);
+		}
 	}
 err:
 	return;
