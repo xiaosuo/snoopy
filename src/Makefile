@@ -10,6 +10,10 @@ else
 CFLAGS += -g -O0
 endif
 
+ifneq ($(shell uname),Linux)
+LDFLAGS += -liconv
+endif
+
 .PHONY: all install clean test
 
 all: ${TARGETS}
