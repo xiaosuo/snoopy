@@ -620,11 +620,14 @@ err:
 
 static pcap_t *p = NULL;
 static bool caught_sigint = false;
+static bool background = false;
 
 static void handle_sigint(int signo)
 {
-	pcap_breakloop(p);
-	caught_sigint = 1;
+	if (!background) {
+		pcap_breakloop(p);
+		caught_sigint = 1;
+	}
 }
 
 static void handle_sigquit(int signo)
@@ -657,7 +660,6 @@ int main(int argc, char *argv[])
 	const char *rule_fn = SNOOPY_RULE_FN;
 	const char *key_fn = SNOOPY_KEY_FN;
 	const char *log_fn = SNOOPY_LOG_FN;
-	bool background = false;
 	int buf_size = 0;
 
 	/* parse the options */
@@ -815,20 +817,24 @@ int main(int argc, char *argv[])
 		if (!caught_sigint)
 			break;
 		caught_sigint = false;
+		if (!background) {
+			fputs("\n", stdout);
+			if (nic)
+				show_pcap_stat(p);
+			show_snoopy_stat();
+			show_flow_stat();
+			printf("flow count: %d\n", g_flow_cnt);
+		}
+	}
+
+	/* output the statistics if possible */
+	if (!background) {
 		fputs("\n", stdout);
 		if (nic)
 			show_pcap_stat(p);
 		show_snoopy_stat();
 		show_flow_stat();
-		printf("flow count: %d\n", g_flow_cnt);
 	}
-
-	/* output the statistics if possible */
-	fputs("\n", stdout);
-	if (nic)
-		show_pcap_stat(p);
-	show_snoopy_stat();
-	show_flow_stat();
 
 	/* close the pcap handler */
 	pcap_close(p);
