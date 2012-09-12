@@ -19,6 +19,17 @@
 #ifndef __HTML_H
 #define __HTML_H
 
+/**
+ * The following limit is got with the following command: ("//" at the end
+ * of the codeset is a delimiter)
+ *
+ * $ iconv -l | awk 'BEGIN { len = 0; charset="" } { if (length($0) > len) {len = length($0); charset=$0} } END { print len; print charset }'
+ * 24
+ * CSISO11SWEDISHFORNAMES//
+ * ICONV
+ */
+#define HTML_CHARSET_SIZE 24
+
 typedef struct html_parse_ctx html_parse_ctx_t;
 html_parse_ctx_t *html_parse_ctx_alloc(const char *charset);
 void html_parse_ctx_free(html_parse_ctx_t *ctx);

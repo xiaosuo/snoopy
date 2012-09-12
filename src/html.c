@@ -35,17 +35,6 @@
  */
 #define HTML_ATTR_VAL_SIZE (1024 + 1)
 
-/**
- * The following limit is got with the following command: ("//" at the end
- * of the codeset is a delimiter)
- *
- * $ iconv -l | awk 'BEGIN { len = 0; charset="" } { if (length($0) > len) {len = length($0); charset=$0} } END { print len; print charset }'
- * 24
- * CSISO11SWEDISHFORNAMES//
- * ICONV
- */
-#define HTML_CHARSET_SIZE 24
-
 /* See http://www.w3.org/TR/html5/tokenization.html */
 
 enum html_state {

@@ -151,6 +151,45 @@ void strtolower(char *str)
 	}
 }
 
+/* quoted-pair    = "\" CHAR */
+static bool is_quoted_pair(const char *str)
+{
+	return str[0] == '\\' && is_char(str[1]);
+}
+
+/**
+ * quoted-string  = ( <"> *(qdtext | quoted-pair ) <"> )
+ * qdtext         = <any TEXT except <">>
+ */
+/* return 0 on malformed quoted string */
+int get_quoted_str_len(const char *str, int size)
+{
+	int len = 0;
+
+	assert(*str == '"');
+	str++;
+	len++;
+	size--;
+
+	while (1) {
+		if (size < 1)
+			return 0;
+		if (len >= 2 && is_quoted_pair(str)) {
+			len += 2;
+			str += 2;
+			size -= 2;
+		} else if (*str == '"') {
+			return len + 1;
+		} else {
+			if (!is_text(*str))
+				return 0;
+			len++;
+			str++;
+			size--;
+		}
+	}
+}
+
 #ifdef TEST
 #include <assert.h>
 #include <stdio.h>

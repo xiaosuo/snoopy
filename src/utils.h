@@ -37,5 +37,6 @@ void *memmem(const void *haystack, size_t haystacklen,
 size_t strlncpy(char *dst, size_t size, const char *src, size_t len);
 size_t strlncat(char *dst, size_t size, const char *src, size_t len);
 void strtolower(char *str);
+int get_quoted_str_len(const char *str, int size);
 
 #endif /* __UTILS_H */
