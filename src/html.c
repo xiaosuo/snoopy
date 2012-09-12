@@ -136,6 +136,32 @@ static void html_cdata_end(html_parse_ctx_t *ctx)
 		ctx->state = HTML_STATE_CDATA;
 }
 
+/* i.e. <?xml version="1.0" encoding="utf-8"?> */
+static void html_parse_pi(html_parse_ctx_t *ctx)
+{
+	char *ptr = strstr(ctx->attr_val, "encoding");
+	char *enc;
+
+	if (!ptr)
+		goto err;
+	ptr = __skip_space(ptr + 8);
+	if (*ptr != '=')
+		goto err;
+	ptr = __skip_space(ptr + 1);
+	if (*ptr != '"')
+		goto err;
+	enc = ptr + 1;
+	ptr = strchr(enc, '"');
+	if (!ptr)
+		goto err;
+	if (ptr == enc)
+		goto err;
+	strlncpy(ctx->charset, sizeof(ctx->charset), enc, ptr - enc);
+	strtolower(ctx->charset);
+err:
+	return;
+}
+
 static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 		int len, html_data_handler h, void *user)
 {
@@ -172,6 +198,7 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 			break;
 		case '?': /* <? */
 			ctx->state = HTML_STATE_PI;
+			ctx->attr_val[0] = '\0';
 			break;
 		default:
 			ctx->state = HTML_STATE_DATA;
@@ -372,8 +399,14 @@ attr_val_xq:
 		ptr = memchr(data, '>', len);
 		if (!ptr) {
 			n = len;
+			strlncat(ctx->attr_val, sizeof(ctx->attr_val),
+				 (const char *)data, n);
 			break;
 		}
+		if (ptr != data)
+			strlncat(ctx->attr_val, sizeof(ctx->attr_val),
+				 (const char *)data, ptr - data);
+		html_parse_pi(ctx);
 		ctx->state = HTML_STATE_DATA;
 		n = ptr - data + 1;
 		break;
@@ -625,6 +658,8 @@ int main(void)
 	TEST_ONE("<p><img src='foo' /></p>", "");
 	TEST_ONE("<input value=abc/ name=path>", "");
 	TEST_ONE("<p>I <em>Love</em> You</p>", "I Love You");
+	TEST_ONE("<?xml version=\"1.0\" encoding=\"utf-8\" ?>", "");
+	assert(strcmp(ctx->charset, "utf-8") == 0);
 
 	return 0;
 }
