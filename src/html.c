@@ -162,6 +162,44 @@ err:
 	return;
 }
 
+/* i.e. <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/> */
+static void html_handle_attr(html_parse_ctx_t *ctx)
+{
+	char *ptr;
+
+	if (strcasecmp(ctx->tag_name, "meta") != 0)
+		goto err;
+	if (strcasecmp(ctx->attr_name, "content") != 0)
+		goto err;
+	ptr = strcasestr(ctx->attr_val, "charset");
+	if (!ptr)
+		goto err;
+	ptr = __skip_space(ptr + 7);
+	if (*ptr != '=')
+		goto err;
+	ptr = __skip_space(ptr + 1);
+	if (*ptr == '"') {
+		char *enc;
+
+		enc = ptr + 1;
+		ptr = strchr(enc, '"');
+		if (!ptr)
+			goto err;
+		if (ptr == enc)
+			goto err;
+		strlncpy(ctx->charset, sizeof(ctx->charset), enc, ptr - enc);
+	} else {
+		int len = __token_len(ptr);
+
+		if (len == 0)
+			goto err;
+		strlncpy(ctx->charset, sizeof(ctx->charset), ptr, len);
+	}
+	strtolower(ctx->charset);
+err:
+	return;
+}
+
 static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 		int len, html_data_handler h, void *user)
 {
@@ -333,13 +371,16 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 			break;
 		switch (data[n++]) {
 		case '>':
+			html_handle_attr(ctx);
 			html_cdata_start(ctx);
 			break;
 		default:
-			if (is_space(data[n - 1]))
+			if (is_space(data[n - 1])) {
+				html_handle_attr(ctx);
 				ctx->state = HTML_STATE_BFOR_ATTR_NAME;
-			else
+			} else {
 				n = -1;
+			}
 			break;
 		}
 		break;
@@ -356,6 +397,7 @@ attr_val_xq:
 		if (ptr != data)
 			strlncat(ctx->attr_val, sizeof(ctx->attr_val),
 				 (const char *)data, ptr - data);
+		html_handle_attr(ctx);
 		n = ptr - data + 1;
 		break;
 	case HTML_STATE_ATTR_VAL_DQ:
@@ -660,6 +702,15 @@ int main(void)
 	TEST_ONE("<p>I <em>Love</em> You</p>", "I Love You");
 	TEST_ONE("<?xml version=\"1.0\" encoding=\"utf-8\" ?>", "");
 	assert(strcmp(ctx->charset, "utf-8") == 0);
+	ctx->charset[0] = '\0';
+	TEST_ONE("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=GB2312\"/>", "");
+	assert(strcmp(ctx->charset, "gb2312") == 0);
+	ctx->charset[0] = '\0';
+	TEST_ONE("<META http-equiv=\"Content-Type\" CONTENT='text/html; charset=\"GBK\"'>", "");
+	assert(strcmp(ctx->charset, "gbk") == 0);
+	ctx->charset[0] = '\0';
+
+
 
 	return 0;
 }
