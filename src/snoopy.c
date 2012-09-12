@@ -465,6 +465,97 @@ static void end_req(void *user)
 	}
 }
 
+/*
+ * media-type     = type "/" subtype *( ";" parameter )
+ * type           = token
+ * subtype        = token
+ * parameter               = attribute "=" value
+ * attribute               = token
+ * value                   = token | quoted-string
+ */
+static int parse_content_type(struct http_req *r, const char *value,
+		int value_len)
+{
+	const char *type, *subtype, *ptr;
+	int type_len, subtype_len;
+
+	type = value;
+	type_len = __token_len(type);
+	if (type_len == 0)
+		goto err;
+	if (type[type_len] != '/')
+		goto err;
+	subtype = type + type_len + 1;
+	subtype_len = __token_len(subtype);
+	if (subtype_len == 0)
+		goto err;
+
+	/*
+	 * The type, subtype, and parameter attribute names are case-
+	 * insensitive.
+	 */
+	if (type_len == 4 && strncasecmp_c(type, "text") == 0) {
+		if ((subtype_len == 4 && strncasecmp_c(subtype, "html") == 0) ||
+		    (subtype_len == 3 && strncasecmp_c(subtype, "xml") == 0))
+			r->ct = HTTP_CT_HTML;
+		else
+			r->ct = HTTP_CT_PLAIN;
+	} else if (type_len == 11 &&
+		   strncasecmp_c(type, "application") == 0 &&
+		   ((subtype_len == 3 && strncasecmp_c(subtype, "xml") == 0) ||
+		    (subtype_len > 4 &&
+		     strncasecmp_c(subtype + subtype_len - 4, "+xml") == 0))) {
+			r->ct = HTTP_CT_HTML;
+	} else {
+		goto err;
+	}
+
+	ptr = subtype + subtype_len;
+	while (1) {
+		const char *attr_name, *attr_val;
+		int attr_name_len, attr_val_len;
+
+		ptr = __skip_space(ptr);
+		if (*ptr == '\0')
+			break;
+		if (*ptr != ';')
+			goto err;
+		attr_name = __skip_space(ptr + 1);
+		attr_name_len = __token_len(attr_name);
+		if (attr_name_len == 0)
+			goto err;
+		ptr = __skip_space(attr_name + attr_name_len);
+		if (*ptr != '=')
+			goto err;
+		attr_val = __skip_space(ptr + 1);
+		if (*attr_val == '"') {
+			attr_val_len = get_quoted_str_len(attr_val,
+					value_len - (attr_val - value));
+			if (attr_val_len == 0)
+				goto err;
+			ptr = attr_val + attr_val_len;
+			attr_val++;
+			attr_val_len--;
+		} else {
+			attr_val_len = __token_len(attr_val);
+			if (attr_val_len == 0)
+				goto err;
+			ptr = attr_val + attr_val_len;
+		}
+		if (attr_name_len == 7 &&
+		    strncasecmp_c(attr_name, "charset") == 0 &&
+		    attr_val_len > 0) {
+			strlncpy(r->charset, sizeof(r->charset),
+				 attr_val, attr_val_len);
+			strtolower(r->charset);
+		}
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
 static void parse_res_hdr_fild(const char *name, int name_len,
 		const char *value, int value_len, void *user)
 {
@@ -475,92 +566,8 @@ static void parse_res_hdr_fild(const char *name, int name_len,
 	if (!name || !(r = stlist_first(&fc->req_list)))
 		goto err;
 	if (name_len == 12 && strcasecmp(name, "Content-Type") == 0) {
-		const char *type, *subtype, *ptr;
-		int type_len, subtype_len;
-
-		/*
-		 * media-type     = type "/" subtype *( ";" parameter )
-		 * type           = token
-		 * subtype        = token
-		 * parameter               = attribute "=" value
-		 * attribute               = token
-		 * value                   = token | quoted-string
-		 */
-		type = value;
-		type_len = __token_len(type);
-		if (type_len == 0)
+		if (parse_content_type(r, value, value_len))
 			goto err;
-		if (type[type_len] != '/')
-			goto err;
-		subtype = type + type_len + 1;
-		subtype_len = __token_len(subtype);
-		if (subtype_len == 0)
-			goto err;
-
-		/*
-		 * The type, subtype, and parameter attribute names are case-
-		 * insensitive.
-		 */
-		if (type_len == 4 && strncasecmp_c(type, "text") == 0) {
-			if ((subtype_len == 4 &&
-			     strncasecmp_c(subtype, "html") == 0) ||
-			    (subtype_len == 3 &&
-			     strncasecmp_c(subtype, "xml") == 0))
-				r->ct = HTTP_CT_HTML;
-			else
-				r->ct = HTTP_CT_PLAIN;
-		} else if (type_len == 11 &&
-			   strncasecmp_c(type, "application") == 0 &&
-			   ((subtype_len == 3 &&
-			     strncasecmp_c(subtype, "xml") == 0) ||
-			    (subtype_len > 4 &&
-			     strncasecmp_c(subtype + subtype_len - 4,
-					   "+xml") == 0))) {
-				r->ct = HTTP_CT_HTML;
-		} else {
-			goto err;
-		}
-
-		ptr = subtype + subtype_len;
-		while (1) {
-			const char *attr_name, *attr_val;
-			int attr_name_len, attr_val_len;
-
-			ptr = __skip_space(ptr);
-			if (*ptr == '\0')
-				break;
-			if (*ptr != ';')
-				goto err;
-			attr_name = __skip_space(ptr + 1);
-			attr_name_len = __token_len(attr_name);
-			if (attr_name_len == 0)
-				goto err;
-			ptr = __skip_space(attr_name + attr_name_len);
-			if (*ptr != '=')
-				goto err;
-			attr_val = __skip_space(ptr + 1);
-			if (*attr_val == '"') {
-				attr_val_len = get_quoted_str_len(attr_val,
-						value_len - (attr_val - value));
-				if (attr_val_len == 0)
-					goto err;
-				ptr = attr_val + attr_val_len;
-				attr_val++;
-				attr_val_len--;
-			} else {
-				attr_val_len = __token_len(attr_val);
-				if (attr_val_len == 0)
-					goto err;
-				ptr = attr_val + attr_val_len;
-			}
-			if (attr_name_len == 7 &&
-			    strncasecmp_c(attr_name, "charset") == 0 &&
-			    attr_val_len > 0) {
-				strlncpy(r->charset, sizeof(r->charset),
-					 attr_val, attr_val_len);
-				strtolower(r->charset);
-			}
-		}
 	} else if (name_len == 13 && strcasecmp(name, "Content-Range") == 0) {
 		const char *ptr;
 
