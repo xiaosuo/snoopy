@@ -20,44 +20,34 @@
 #include "utils.h"
 #include "queue.h"
 #include "list.h"
+#include "ctab.h"
 #include <stdio.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
 struct patn {
-	unsigned char			*raw;
-	int				len;
-	char				*enc;
+	unsigned char			*patn;
 	slist_entry(struct patn)	link;
 };
 
 static void patn_free(struct patn *p)
 {
-	free(p->raw);
-	free(p->enc);
+	free(p->patn);
 	free(p);
 }
 
-static struct patn *patn_alloc(const unsigned char *data, int len)
+static struct patn *patn_alloc(const unsigned char *patn)
 {
 	struct patn *p = malloc(sizeof(*p));
 
 	if (!p)
 		goto err;
-	p->raw = xmemdup(data, len);
-	if (!p->raw)
+	p->patn = (unsigned char *)strdup((const char *)patn);
+	if (!p->patn)
 		goto err2;
-	p->len = url_decode(p->raw, len);
-	if (p->len < 0)
-		goto err3;
-	p->enc = xmemdup(data, len);
-	if (!p->enc)
-		goto err3;
 
 	return p;
-err3:
-	free(p->raw);
 err2:
 	free(p);
 err:
@@ -127,21 +117,20 @@ err:
 	return NULL;
 }
 
-static int patn_list_add_patn(struct patn_list *l, const unsigned char *data,
-			      int len)
+static int patn_list_add_patn(struct patn_list *l, const unsigned char *patn)
 {
 	struct patn *p;
 	struct patn_state *s;
 	int i;
 
-	p = patn_alloc(data, len);
+	p = patn_alloc(patn);
 	if (!p)
 		goto err;
 	slist_add_head(&l->patn_list, p, link);
 
 	s = l->root;
-	for (i = 0; i < p->len; i++) {
-		unsigned char c = p->raw[i];
+	for (i = 0; p->patn[i] != '\0'; i++) {
+		unsigned char c = p->patn[i];
 
 		if (!s->next[c]) {
 			struct patn_state *n = calloc(1, sizeof(*n));
@@ -241,20 +230,23 @@ patn_list_t *patn_list_load(const char *fn)
 	if (!fp)
 		goto err2;
 	while (fgets((char *)buf, sizeof(buf), fp)) {
-		int len = strspn((char *)buf, " \t\r\n");
+		unsigned char *ptr = (unsigned char *)__skip_space((char *)buf);
+		int len, i;
 
-		/* skip emtpy lines */
-		if (buf[len] == '\0')
+		/* skip empty lines */
+		if (*ptr == '\0')
 			continue;
+		len = strlen((char *)ptr);
+		while (len > 0 && is_space(ptr[len - 1]))
+			ptr[--len] = '\0';
 
-		/* remove the CR and NL from the tail */
-		len = strlen((char *)buf);
-		if (buf[len - 1] == '\n')
-			buf[--len] = '\0';
-		if (buf[len - 1] == '\r')
-			buf[--len] = '\0';
+		/* check if there is a space in the keyword*/
+		for (i = 0; i < len; i++) {
+			if (is_space(ptr[i]))
+				goto err3;
+		}
 
-		if (patn_list_add_patn(l, buf, len))
+		if (patn_list_add_patn(l, ptr))
 			goto err3;
 	}
 	if (!feof(fp) || ferror(fp))
@@ -309,7 +301,8 @@ void patn_sch_ctx_reset(patn_sch_ctx_t *c)
 }
 
 int patn_sch(patn_list_t *l, patn_sch_ctx_t *c, const unsigned char *buf,
-	     int len, int (*cb)(const char *patn, void *data), void *data)
+	     int len, int (*cb)(const unsigned char *patn, void *data),
+	     void *data)
 {
 	struct patn_state *s;
 	int n = 0;
@@ -323,7 +316,7 @@ int patn_sch(patn_list_t *l, patn_sch_ctx_t *c, const unsigned char *buf,
 
 		s = s->next[*buf++];
 		slist_for_each(r, &s->res_list, link) {
-			int retval = cb(r->patn->enc, data);
+			int retval = cb(r->patn->patn, data);
 
 			if (retval < 0) { /* ignore errors */
 				continue;
@@ -344,7 +337,7 @@ out:
 #ifdef TEST
 #include <assert.h>
 
-static int patn_print(const char *patn, void *data)
+static int patn_print(const unsigned char *patn, void *data)
 {
 	printf("%s\n", patn);
 

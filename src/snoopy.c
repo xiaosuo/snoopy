@@ -605,14 +605,14 @@ struct patn_user {
 	struct flow_ctx		*fc;
 };
 
-static int log_keyword(const char *k, void *user)
+static int log_keyword(const unsigned char *k, void *user)
 {
 	struct patn_user *pu = user;
 	struct flow_ctx *fc = pu->fc;
 	int r;
 
-	r = log_write(&g_time, pu->ip->ip_dst.s_addr,
-			pu->ip->ip_src.s_addr, pu->r->host, pu->r->path, k);
+	r = log_write(&g_time, pu->ip->ip_dst.s_addr, pu->ip->ip_src.s_addr,
+		      pu->r->host, pu->r->path, (const char *)k);
 	if (r < 0)
 		return r;
 	if (fc->snoopy->is_lazy) {

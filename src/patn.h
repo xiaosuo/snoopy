@@ -29,6 +29,7 @@ patn_sch_ctx_t *patn_sch_ctx_alloc(void);
 void patn_sch_ctx_free(patn_sch_ctx_t *ctx);
 void patn_sch_ctx_reset(patn_sch_ctx_t *c);
 int patn_sch(patn_list_t *l, patn_sch_ctx_t *c, const unsigned char *buf,
-	     int len, int (*cb)(const char *patn, void *data), void *data);
+	     int len, int (*cb)(const unsigned char *patn, void *data),
+	     void *data);
 
 #endif /* __PATN_H */

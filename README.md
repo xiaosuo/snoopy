@@ -54,13 +54,13 @@ Ex.
 The default keyword file is */etc/snoopy/keywords.conf*, and you can set it to
 another file with option *-k* too.
 
-A key occupies one line, and the non-ASCII characters should be encoded with
-URL encoding specified in [RFC3986](http://tools.ietf.org/html/rfc3986).
+A keyword occupies one line, must be encoded in UTF-8, and must _NOT_ contains
+any space.
 
 Ex.
 
     test
-    %12%34%ab%cd
+    你好
 
 ## Run
 
