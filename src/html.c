@@ -19,6 +19,9 @@
 #include "html.h"
 #include "utils.h"
 #include "ctab.h"
+#include <assert.h>
+#include <iconv.h>
+#include <errno.h>
 #include <string.h>
 
 /* See: http://www.w3.org/MarkUp/html-spec/html-spec_toc.html */
@@ -68,7 +71,11 @@ enum html_state {
 	HTML_STATE_CDATA_END_TAG_CLS,
 };
 
-#define HTML_BUF_SIZE	16
+/**
+ * The max length of one UTF-8 char is 6, and we round it up to the nearest
+ * 2^3 = 8 here.
+ */
+#define HTML_IN_BUF_SIZE 8
 
 struct html_parse_ctx {
 	enum html_state	state;
@@ -76,9 +83,27 @@ struct html_parse_ctx {
 	char		attr_name[HTML_NAME_SIZE];	/* case insensitive */
 	char		attr_val[HTML_ATTR_VAL_SIZE];
 	char		cdata_elem[sizeof("script")];
-	char		charset[HTML_CHARSET_SIZE];
 	bool		got_space;
+	char		charset[HTML_CHARSET_SIZE];
+	iconv_t		cd;
+	unsigned char	in_buf[HTML_IN_BUF_SIZE];
+	size_t		in_buf_len;
 };
+
+static void html_set_charset(html_parse_ctx_t *ctx, const char *charset,
+		int len)
+{
+	strlncpy(ctx->charset, sizeof(ctx->charset), charset, len);
+	strtolower(ctx->charset);
+	if (strcmp(ctx->charset, "utf-8") == 0 ||
+	    strcmp(ctx->charset, "utf8") == 0)
+		ctx->charset[0] = '\0';
+	if (ctx->cd != (iconv_t)-1) {
+		iconv_close(ctx->cd);
+		ctx->cd = (iconv_t)-1;
+	}
+	ctx->in_buf_len = 0;
+}
 
 html_parse_ctx_t *html_parse_ctx_alloc(const char *charset)
 {
@@ -91,18 +116,19 @@ html_parse_ctx_t *html_parse_ctx_alloc(const char *charset)
 	ctx->attr_name[0] = '\0';
 	ctx->attr_val[0] = '\0';
 	ctx->cdata_elem[0] = '\0';
-	if (charset)
-		strlncpy(ctx->charset, sizeof(ctx->charset), charset,
-			 strlen(charset));
-	else
-		ctx->charset[0] = '\0';
 	ctx->got_space = false;
+	if (!charset)
+		charset = "";
+	ctx->cd = (iconv_t)-1;
+	html_set_charset(ctx, charset, strlen(charset));
 err:
 	return ctx;
 }
 
 void html_parse_ctx_free(html_parse_ctx_t *ctx)
 {
+	if (ctx->cd != (iconv_t)-1)
+		iconv_close(ctx->cd);
 	free(ctx);
 }
 
@@ -145,8 +171,7 @@ static void html_parse_pi(html_parse_ctx_t *ctx)
 		goto err;
 	if (ptr == enc)
 		goto err;
-	strlncpy(ctx->charset, sizeof(ctx->charset), enc, ptr - enc);
-	strtolower(ctx->charset);
+	html_set_charset(ctx, enc, ptr - enc);
 err:
 	return;
 }
@@ -176,17 +201,117 @@ static void html_handle_attr(html_parse_ctx_t *ctx)
 			goto err;
 		if (ptr == enc)
 			goto err;
-		strlncpy(ctx->charset, sizeof(ctx->charset), enc, ptr - enc);
+		html_set_charset(ctx, enc, ptr - enc);
 	} else {
 		int len = __token_len(ptr);
 
 		if (len == 0)
 			goto err;
-		strlncpy(ctx->charset, sizeof(ctx->charset), ptr, len);
+		html_set_charset(ctx, ptr, len);
 	}
-	strtolower(ctx->charset);
 err:
 	return;
+}
+
+static int html_handle_data(html_parse_ctx_t *ctx, const unsigned char *data,
+		int len, html_data_handler h, void *user)
+{
+	if (ctx->charset[0] == '\0') {
+		h(data, len, user);
+		goto out;
+	}
+	if (ctx->cd == (iconv_t)-1 &&
+	    (ctx->cd = iconv_open("utf-8", ctx->charset)) == (iconv_t)-1)
+		goto err;
+	if (ctx->in_buf_len > 0) {
+		unsigned char outbuf[HTML_IN_BUF_SIZE * 2];
+		char *inptr, *outptr;
+		size_t inbytesleft, outbytesleft, retval;
+		size_t copied = sizeof(ctx->in_buf) - ctx->in_buf_len;
+		int error;
+
+		if (copied > len)
+			copied = len;
+		memcpy(ctx->in_buf + ctx->in_buf_len, data, copied);
+		ctx->in_buf_len += copied;
+		data += copied;
+		len -= copied;
+
+		inptr = (char *)(ctx->in_buf);
+		inbytesleft = ctx->in_buf_len;
+		outptr = (char *)outbuf;
+		outbytesleft = sizeof(outbuf);
+		retval = iconv(ctx->cd, &inptr, &inbytesleft, &outptr,
+			       &outbytesleft);
+		error = errno;
+		if (outbytesleft != sizeof(outbuf))
+			h(outbuf, sizeof(outbuf) - outbytesleft, user);
+		if (inptr == (char *)ctx->in_buf) {
+			assert(retval == (size_t)-1);
+			switch (error) {
+			case EINVAL:
+				/* So long multibyte char? */
+				if (ctx->in_buf_len == sizeof(ctx->in_buf))
+					goto err;
+				break;
+			case E2BIG: /* I don't think so */
+			case EILSEQ:
+			default:
+				goto err;
+				break;
+			}
+		} else {
+			assert(inbytesleft < copied);
+			data -= inbytesleft;
+			len += inbytesleft;
+			ctx->in_buf_len = 0;
+		}
+
+		if (len == 0)
+			goto out;
+	}
+
+	while (1) {
+		unsigned char outbuf[2048];
+		char *inptr, *outptr;
+		size_t inbytesleft, outbytesleft, retval;
+		int error;
+
+		inptr = (char *)data;
+		inbytesleft = len;
+		outptr = (char *)outbuf;
+		outbytesleft = sizeof(outbuf);
+		retval = iconv(ctx->cd, &inptr, &inbytesleft, &outptr,
+			       &outbytesleft);
+		error = errno;
+		if (outbytesleft != sizeof(outbuf))
+			h(outbuf, sizeof(outbuf) - outbytesleft, user);
+		data += (len - inbytesleft);
+		len = inbytesleft;
+		if (len == 0)
+			break;
+		assert(retval == (size_t)-1);
+		switch (error) {
+		case EINVAL:
+			/* So long multibyte char? */
+			if (len >= sizeof(ctx->in_buf))
+				goto err;
+			memcpy(ctx->in_buf, data, len);
+			ctx->in_buf_len = len;
+			goto out;
+			break;
+		case E2BIG:
+			break;
+		case EILSEQ:
+		default:
+			goto err;
+			break;
+		}
+	}
+out:
+	return 0;
+err:
+	return -1;
 }
 
 static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
@@ -199,14 +324,18 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 	case HTML_STATE_DATA:
 		ptr = memchr(data, '<', len);
 		if (!ptr) {
-			h(data, len, user);
-			n = len;
+			if (html_handle_data(ctx, data, len, h, user))
+				n = -1;
+			else
+				n = len;
 			break;
 		}
 		ctx->state = HTML_STATE_TAG_OPEN;
-		if (ptr != data)
-			h(data, ptr - data, user);
-		n = ptr - data + 1;
+		if (ptr != data &&
+		    html_handle_data(ctx, data, ptr - data, h, user))
+			n = -1;
+		else
+			n = ptr - data + 1;
 		break;
 	case HTML_STATE_TAG_OPEN: /* < */
 		n = 1;
@@ -229,8 +358,11 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 			break;
 		default:
 			ctx->state = HTML_STATE_DATA;
-			h((const unsigned char *)"<", 1, user);
-			n = 0;
+			if (html_handle_data(ctx, (const unsigned char *)"<", 1,
+					h, user))
+				n = -1;
+			else
+				n = 0;
 			break;
 		}
 		break;
@@ -649,11 +781,17 @@ static void cb(const unsigned char *data, int len, void *user)
 
 int main(void)
 {
-	html_parse_ctx_t *ctx = html_parse_ctx_alloc("test");
+	const char *ptr;
+	html_parse_ctx_t *ctx = html_parse_ctx_alloc("utf-8");
 
 #define TEST_ONE(data, exp_data) \
 	buf[0] = '\0'; \
 	assert(html_parse(ctx, data, strlen(data), cb, NULL) == 0); \
+	assert(ctx->state == HTML_STATE_DATA); \
+	assert(strcmp(buf, exp_data) == 0); \
+	buf[0] = '\0'; \
+	for (ptr = data; *ptr; ptr++) \
+		assert(html_parse(ctx, ptr, 1, cb, NULL) == 0); \
 	assert(ctx->state == HTML_STATE_DATA); \
 	assert(strcmp(buf, exp_data) == 0)
 	TEST_ONE("<?>", "");
@@ -689,8 +827,8 @@ int main(void)
 	TEST_ONE("<p><img src='foo' /></p>", "");
 	TEST_ONE("<input value=abc/ name=path>", "");
 	TEST_ONE("<p>I <em>Love</em> You</p>", "I Love You");
-	TEST_ONE("<?xml version=\"1.0\" encoding=\"utf-8\" ?>", "");
-	assert(strcmp(ctx->charset, "utf-8") == 0);
+	TEST_ONE("<?xml version=\"1.0\" encoding=\"gb18030\" ?>", "");
+	assert(strcmp(ctx->charset, "gb18030") == 0);
 	ctx->charset[0] = '\0';
 	TEST_ONE("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=GB2312\"/>", "");
 	assert(strcmp(ctx->charset, "gb2312") == 0);
@@ -698,8 +836,9 @@ int main(void)
 	TEST_ONE("<META http-equiv=\"Content-Type\" CONTENT='text/html; charset=\"GBK\"'>", "");
 	assert(strcmp(ctx->charset, "gbk") == 0);
 	ctx->charset[0] = '\0';
-
-
+	TEST_ONE("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=GB2312\" /><h1>\xc4\xe3\xba\xc3</h1>", "\xe4\xbd\xa0\xe5\xa5\xbd");
+	assert(strcmp(ctx->charset, "gb2312") == 0);
+	ctx->charset[0] = '\0';
 
 	return 0;
 }
