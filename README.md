@@ -17,6 +17,7 @@ Changli Gao <xiaosuo@gmail.com>
 
 * [libpcap](http://www.tcpdump.org)
 * [zlib](http://www.zlib.net)
+* [libiconv](http://www.gnu.org/software/libiconv/) on non-Linux platforms
 
 ## Install
 
