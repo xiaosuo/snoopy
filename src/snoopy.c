@@ -83,16 +83,6 @@ static void show_snoopy_stat(void)
 	printf("fragments: %" PRIu64 "\n", snoopy_stat.frags);
 }
 
-static void show_flow_stat(void)
-{
-	printf("flow ceate: %" PRIu64 "\n", g_flow_stat.create);
-	printf("flow normal: %" PRIu64 "\n", g_flow_stat.normal);
-	printf("flow gc: %" PRIu64 "\n", g_flow_stat.gc);
-	printf("flow reset: %" PRIu64 "\n", g_flow_stat.reset);
-	printf("flow loss of sync: %" PRIu64 "\n", g_flow_stat.loss_of_sync);
-	printf("flow early drop: %" PRIu64 "\n", g_flow_stat.early_drop);
-}
-
 enum http_content_type {
 	HTTP_CT_UNSUP,
 	HTTP_CT_PLAIN,
@@ -894,7 +884,7 @@ int main(int argc, char *argv[])
 			if (nic)
 				show_pcap_stat(p);
 			show_snoopy_stat();
-			show_flow_stat();
+			flow_stat_show();
 			printf("flow count: %d\n", g_flow_cnt);
 		}
 	}
@@ -905,7 +895,7 @@ int main(int argc, char *argv[])
 		if (nic)
 			show_pcap_stat(p);
 		show_snoopy_stat();
-		show_flow_stat();
+		flow_stat_show();
 	}
 
 	/* close the pcap handler */

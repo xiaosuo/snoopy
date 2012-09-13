@@ -42,6 +42,8 @@ struct flow_stat {
 
 extern struct flow_stat g_flow_stat;
 
+void flow_stat_show(void);
+
 typedef struct flow flow_t;
 
 int flow_add_tag(flow_t *f, int id, void *data, void (*free)(void *data));

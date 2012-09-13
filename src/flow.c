@@ -23,6 +23,8 @@
 #include "list.h"
 #include <assert.h>
 #include <time.h>
+#include <inttypes.h>
+#include <stdio.h>
 
 enum {
 	FLOW_FLAG_INIT		= 0,
@@ -83,6 +85,16 @@ struct flow_gc_list {
 static list_head( , struct flow) *l_hash_table = NULL;
 int g_flow_cnt = 0;
 struct flow_stat g_flow_stat = { 0 };
+
+void flow_stat_show(void)
+{
+	printf("flow ceate: %" PRIu64 "\n", g_flow_stat.create);
+	printf("flow normal: %" PRIu64 "\n", g_flow_stat.normal);
+	printf("flow gc: %" PRIu64 "\n", g_flow_stat.gc);
+	printf("flow reset: %" PRIu64 "\n", g_flow_stat.reset);
+	printf("flow loss of sync: %" PRIu64 "\n", g_flow_stat.loss_of_sync);
+	printf("flow early drop: %" PRIu64 "\n", g_flow_stat.early_drop);
+}
 
 int flow_add_tag(flow_t *f, int id, void *data, void (*free)(void *data))
 {
