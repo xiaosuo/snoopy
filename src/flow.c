@@ -365,12 +365,16 @@ err:
 	return -1;
 }
 
+static void *l_flow_gc_time_update_handle;
+
 int flow_init(void)
 {
 	l_hash_table = calloc(FLOW_NR_MAX, sizeof(*l_hash_table));
 	if (!l_hash_table)
 		goto err;
-	if (time_register_update_handler(flow_gc, NULL))
+	l_flow_gc_time_update_handle = time_register_update_handler(flow_gc,
+			NULL);
+	if (!l_flow_gc_time_update_handle)
 		goto err2;
 	srandom(time(NULL));
 
@@ -379,4 +383,18 @@ err2:
 	free(l_hash_table);
 err:
 	return -1;
+}
+
+void flow_exit(void)
+{
+	int i;
+
+	time_unregister_update_handler(l_flow_gc_time_update_handle);
+	for (i = 0; i < FLOW_NR_MAX; i++) {
+		struct flow *f, *n;
+
+		list_for_each_safe(f, n, &l_hash_table[i], hash_link)
+			flow_free(f);
+	}
+	free(l_hash_table);
 }

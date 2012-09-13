@@ -910,6 +910,12 @@ int main(int argc, char *argv[])
 
 	/* close the pcap handler */
 	pcap_close(p);
+
+	patn_list_free(ctx.patn_list);
+	http_parser_free(ctx.pasr);
+	rule_list_free(ctx.rule_list);
+	log_close();
+	flow_exit();
 out:
 	return EXIT_SUCCESS;
 err:

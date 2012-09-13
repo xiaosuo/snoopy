@@ -150,6 +150,10 @@ do { \
 
 #define list_for_each slist_for_each
 
+#define list_for_each_safe(item, nitem, head, entry) \
+	for (item = (head)->first; item && ({ nitem = item->entry.next; 1; }); \
+	     item = nitem)
+
 /* Tail List */
 
 #define tlist_head(name, type) \

@@ -32,18 +32,31 @@ static slist_head( , struct time_update_handler_iter)
 		l_time_update_handler_list =
 		SLIST_HEAD_INITIALIZER(&l_time_update_handler_list);
 
-int time_register_update_handler(time_update_handler h, void *user)
+void *time_register_update_handler(time_update_handler h, void *user)
 {
 	struct time_update_handler_iter *i = malloc(sizeof(*i));
 
 	if (!i)
-		return -1;
+		return NULL;
 
 	i->h = h;
 	i->user = user;
 	slist_add_head(&l_time_update_handler_list, i, link);
 
-	return 0;
+	return i;
+}
+
+void time_unregister_update_handler(void *handle)
+{
+	struct time_update_handler_iter *i, **pp;
+
+	slist_for_each_pprev(i, pp, &l_time_update_handler_list, link) {
+		if (i == handle) {
+			slist_del(i, pp, link);
+			free(i);
+			return;
+		}
+	}
 }
 
 void time_update(const struct timeval *tv)

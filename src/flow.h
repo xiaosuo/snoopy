@@ -54,6 +54,7 @@ typedef void (*flow_data_handler)(flow_t *f, int dir, const unsigned char *data,
 int flow_init(void);
 int flow_inspect(struct ip *ip, struct tcphdr *tcph, const unsigned char *data,
 		int len, flow_data_handler h, void *user);
+void flow_exit(void);
 
 extern int g_flow_cnt;
 
