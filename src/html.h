@@ -19,6 +19,8 @@
 #ifndef __HTML_H
 #define __HTML_H
 
+#include <stdint.h>
+
 /**
  * The following limit is got with the following command: ("//" at the end
  * of the codeset is a delimiter)
@@ -29,6 +31,17 @@
  * ICONV
  */
 #define HTML_CHARSET_SIZE 24
+
+struct html_stat {
+	uint64_t	malformed;
+	uint64_t	unknown_encoding;
+	uint64_t	no_encoding;
+	uint64_t	good;
+};
+
+extern struct html_stat g_html_stat;
+
+void html_stat_show(void);
 
 typedef struct html_parse_ctx html_parse_ctx_t;
 html_parse_ctx_t *html_parse_ctx_alloc(const char *charset);

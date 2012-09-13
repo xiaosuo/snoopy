@@ -23,6 +23,8 @@
 #include <iconv.h>
 #include <errno.h>
 #include <string.h>
+#include <inttypes.h>
+#include <stdio.h>
 
 /* See: http://www.w3.org/MarkUp/html-spec/html-spec_toc.html */
 
@@ -37,6 +39,17 @@
  * for HTML) limits the length of an attribute value to 1024 characters. 
  */
 #define HTML_ATTR_VAL_SIZE (1024 + 1)
+
+struct html_stat g_html_stat = { 0 };
+
+void html_stat_show(void)
+{
+	printf("html malformed: %" PRIu64 "\n", g_html_stat.malformed);
+	printf("html unknown encoding: %" PRIu64 "\n",
+	       g_html_stat.unknown_encoding);
+	printf("html no encoding: %" PRIu64 "\n", g_html_stat.no_encoding);
+	printf("html good: %" PRIu64 "\n", g_html_stat.good);
+}
 
 /* See http://www.w3.org/TR/html5/tokenization.html */
 
@@ -88,6 +101,8 @@ struct html_parse_ctx {
 	iconv_t		cd;
 	unsigned char	in_buf[HTML_IN_BUF_SIZE];
 	size_t		in_buf_len;
+	bool		is_utf8;
+	bool		failed_to_parse;
 };
 
 static void html_set_charset(html_parse_ctx_t *ctx, const char *charset,
@@ -96,8 +111,10 @@ static void html_set_charset(html_parse_ctx_t *ctx, const char *charset,
 	strlncpy(ctx->charset, sizeof(ctx->charset), charset, len);
 	strtolower(ctx->charset);
 	if (strcmp(ctx->charset, "utf-8") == 0 ||
-	    strcmp(ctx->charset, "utf8") == 0)
+	    strcmp(ctx->charset, "utf8") == 0) {
+		ctx->is_utf8 = true;
 		ctx->charset[0] = '\0';
+	}
 	if (ctx->cd != (iconv_t)-1) {
 		iconv_close(ctx->cd);
 		ctx->cd = (iconv_t)-1;
@@ -121,6 +138,9 @@ html_parse_ctx_t *html_parse_ctx_alloc(const char *charset)
 		charset = "";
 	ctx->cd = (iconv_t)-1;
 	html_set_charset(ctx, charset, strlen(charset));
+	if (charset[0] == '\0')
+		ctx->is_utf8 = false;
+	ctx->failed_to_parse = false;
 err:
 	return ctx;
 }
@@ -129,6 +149,12 @@ void html_parse_ctx_free(html_parse_ctx_t *ctx)
 {
 	if (ctx->cd != (iconv_t)-1)
 		iconv_close(ctx->cd);
+	if (!ctx->failed_to_parse) {
+		if (ctx->charset == '\0' && !ctx->is_utf8)
+			g_html_stat.no_encoding++;
+		else
+			g_html_stat.good++;
+	}
 	free(ctx);
 }
 
@@ -311,6 +337,8 @@ static int html_handle_data(html_parse_ctx_t *ctx, const unsigned char *data,
 out:
 	return 0;
 err:
+	g_html_stat.unknown_encoding++;
+
 	return -1;
 }
 
@@ -384,7 +412,7 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 			if (is_space(data[n - 1]))
 				ctx->state = HTML_STATE_BFOR_ATTR_NAME;
 			else
-				n = -1;
+				goto malformed;
 			break;
 		}
 		break;
@@ -407,7 +435,7 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 			if (is_space(*data))
 				break;
 			else
-				n = -1;
+				goto malformed;
 			break;
 		}
 		break;
@@ -432,7 +460,7 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 			if (is_space(data[n - 1]))
 				ctx->state = HTML_STATE_AFTR_ATTR_NAME;
 			else
-				n = -1;
+				goto malformed;
 			break;
 		}
 		break;
@@ -456,7 +484,7 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 			break;
 		default:
 			if (!is_space(*data))
-				n = -1;
+				goto malformed;
 			break;
 		}
 		break;
@@ -479,7 +507,7 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 			break;
 		default:
 			if (!is_space(*data))
-				n = -1;
+				goto malformed;
 			break;
 		}
 		break;
@@ -500,7 +528,7 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 				html_handle_attr(ctx);
 				ctx->state = HTML_STATE_BFOR_ATTR_NAME;
 			} else {
-				n = -1;
+				goto malformed;
 			}
 			break;
 		}
@@ -538,7 +566,7 @@ attr_val_xq:
 			if (is_space(*data))
 				ctx->state = HTML_STATE_BFOR_ATTR_NAME;
 			else
-				n = -1;
+				goto malformed;
 		}
 		break;
 	case HTML_STATE_SELF_CLS_START_TAG: /* <[a-z][A-Z].../ */
@@ -547,7 +575,7 @@ attr_val_xq:
 			n = 1;
 			break;
 		}
-		n = -1;
+		goto malformed;
 		break;
 	case HTML_STATE_END_TAG_OPEN: /* </ */
 		ptr = memchr(data, '>', len);
@@ -752,6 +780,10 @@ attr_val_xq:
 	}
 
 	return n;
+malformed:
+	g_html_stat.malformed++;
+
+	return -1;
 }
 
 int html_parse(html_parse_ctx_t *ctx, const unsigned char *data, int len,
@@ -760,8 +792,10 @@ int html_parse(html_parse_ctx_t *ctx, const unsigned char *data, int len,
 	while (len > 0) {
 		int n = __html_parse(ctx, data, len, h, user);
 
-		if (n < 0)
+		if (n < 0) {
+			ctx->failed_to_parse = true;
 			return -1;
+		}
 		data += n;
 		len -= n;
 	}

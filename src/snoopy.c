@@ -119,6 +119,7 @@ struct snoopy_ctx {
 	patn_list_t	*patn_list;
 	bool		is_lazy;
 	bool		inspect_all;
+	const char	*nic;
 };
 
 struct flow_ctx {
@@ -710,10 +711,20 @@ static void show_pcap_stat(pcap_t *p)
 	printf("pcap-dropped: %u\n", st.ps_drop);
 }
 
+static void show_stat(struct snoopy_ctx *ctx)
+{
+	fputs("\n", stdout);
+	if (ctx->nic)
+		show_pcap_stat(p);
+	show_snoopy_stat();
+	flow_stat_show();
+	printf("flow count: %d\n", g_flow_cnt);
+	html_stat_show();
+}
+
 int main(int argc, char *argv[])
 {
 	int o;
-	const char *nic = NULL;
 	const char *file = NULL;
 	int snap_len = 0;
 	char err_buf[PCAP_ERRBUF_SIZE];
@@ -738,9 +749,9 @@ int main(int argc, char *argv[])
 			goto out;
 			break;
 		case 'i':
-			if (file || nic)
+			if (file || ctx.nic)
 				die("FILE and NIC are exclusive\n");
-			nic = optarg;
+			ctx.nic = optarg;
 			break;
 		case 'k':
 			key_fn = optarg;
@@ -752,7 +763,7 @@ int main(int argc, char *argv[])
 			buf_size = atoi(optarg);
 			break;
 		case 'r':
-			if (file || nic)
+			if (file || ctx.nic)
 				die("FILE and NIC are exclusive\n");
 			file = optarg;
 			break;
@@ -773,7 +784,7 @@ int main(int argc, char *argv[])
 			break;
 		}
 	}
-	if (!file && !nic)
+	if (!file && !ctx.nic)
 		die("FILE or NIC must be given\n");
 
 	/* initialize snoopy ctx */
@@ -805,19 +816,19 @@ int main(int argc, char *argv[])
 		die("failed to install the SIGTERM handler\n");
 
 	/* open the pcap handler */
-	if (nic) {
+	if (ctx.nic) {
 		if (!snap_len) {
-			snap_len = if_get_mtu(nic);
+			snap_len = if_get_mtu(ctx.nic);
 			if (snap_len < 0)
-				die("failed to get the mtu of %s\n", nic);
+				die("failed to get the mtu of %s\n", ctx.nic);
 			snap_len += sizeof(struct ether_header) +
 					sizeof(struct vlan_hdr);
 			printf("determined snap length: %d\n", snap_len);
 		}
 		err_buf[0] = '\0';
-		p = pcap_create(nic, err_buf);
+		p = pcap_create(ctx.nic, err_buf);
 		if (!p)
-			die("failed to open %s: %s\n", nic, err_buf);
+			die("failed to open %s: %s\n", ctx.nic, err_buf);
 		pcap_set_snaplen(p, snap_len);
 		pcap_set_promisc(p, 1);
 		pcap_set_timeout(p, 1);
@@ -879,24 +890,13 @@ int main(int argc, char *argv[])
 		if (!caught_sigint)
 			break;
 		caught_sigint = false;
-		if (!background) {
-			fputs("\n", stdout);
-			if (nic)
-				show_pcap_stat(p);
-			show_snoopy_stat();
-			flow_stat_show();
-			printf("flow count: %d\n", g_flow_cnt);
-		}
+		if (!background)
+			show_stat(&ctx);
 	}
 
 	/* output the statistics if possible */
-	if (!background) {
-		fputs("\n", stdout);
-		if (nic)
-			show_pcap_stat(p);
-		show_snoopy_stat();
-		flow_stat_show();
-	}
+	if (!background)
+		show_stat(&ctx);
 
 	/* close the pcap handler */
 	pcap_close(p);
