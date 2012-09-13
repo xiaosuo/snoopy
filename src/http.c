@@ -26,6 +26,31 @@
 #include <string.h>
 #include <stdbool.h>
 #include <zlib.h>
+#include <stdio.h>
+#include <inttypes.h>
+
+struct http_stat g_http_stat = { 0 };
+
+void http_stat_show(void)
+{
+	printf("http malformed start line: %" PRIu64 "\n",
+	       g_http_stat.malformed_start_line);
+	printf("http malformed request-line: %" PRIu64 "\n",
+	       g_http_stat.malformed_request_line);
+	printf("http malformed status-line: %" PRIu64 "\n",
+	       g_http_stat.malformed_status_line);
+	printf("http malformed header: %" PRIu64 "\n",
+	       g_http_stat.malformed_header);
+	printf("http malformed content-encoding: %" PRIu64 "\n",
+	       g_http_stat.malformed_content_encoding);
+	printf("http malformed chunk-size: %" PRIu64 "\n",
+	       g_http_stat.malformed_chunk_size);
+	printf("http malformed chunk-data: %" PRIu64 "\n",
+	       g_http_stat.malformed_chunk_data);
+	printf("http malformed trailer: %" PRIu64 "\n",
+	       g_http_stat.malformed_trailer);
+	printf("http good: %" PRIu64 "\n", g_http_stat.good);
+}
 
 struct http_parser {
 	http_request_line_handler	request_line;
@@ -164,6 +189,7 @@ static void http_parse_ctx_common_reset(struct http_parse_ctx_common *c)
 		inflateEnd(c->streamp);
 		free(c->streamp);
 	}
+	g_http_stat.good++;
 	http_parse_ctx_common_init(c);
 }
 
@@ -620,8 +646,11 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 	switch (c->state) {
 	case HTTP_STATE_START_LINE:
 		n = http_get_line(c, &end, data, len);
-		if (!end)
+		if (!end) {
+			if (n < 0)
+				g_http_stat.malformed_start_line++;
 			break;
+		}
 		/* ignore empty lines before start lines */
 		if (__space_len(c->line) == c->line_len) {
 			c->line_len = 0;
@@ -629,18 +658,25 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		}
 		c->state = HTTP_STATE_MSG_HDR;
 		if (dir == PKT_DIR_C2S) {
-			if (http_parse_request_line(pasr, c->line, user))
+			if (http_parse_request_line(pasr, c->line, user)) {
+				g_http_stat.malformed_request_line++;
 				goto err;
+			}
 		} else {
-			if (http_parse_status_line(pasr, c->line, user))
+			if (http_parse_status_line(pasr, c->line, user)) {
+				g_http_stat.malformed_status_line++;
 				goto err;
+			}
 		}
 		c->line_len = 0;
 		break;
 	case HTTP_STATE_MSG_HDR:
 		n = http_parse_msg_hdr(pasr, c, &end, dir, data, len, user);
-		if (!end)
+		if (!end) {
+			if (n < 0)
+				g_http_stat.malformed_header++;
 			break;
+		}
 		if (c->is_chunked) {
 			c->state = HTTP_STATE_MSG_CHUNK_SIZE;
 			c->line_len = 0;
@@ -656,8 +692,10 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		assert(c->body_len > 0);
 		n = MIN(len, c->body_len);
 		c->body_len -= n;
-		if (decode_content(pasr, c, dir, data, n, user))
+		if (decode_content(pasr, c, dir, data, n, user)) {
+			g_http_stat.malformed_content_encoding++;
 			goto err;
+		}
 		if (c->body_len == 0) {
 			http_parse_ctx_common_reset(c);
 			call_msg_end_handler(pasr, dir, user);
@@ -682,8 +720,11 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 */
 	case HTTP_STATE_MSG_CHUNK_SIZE:
 		n = http_get_line(c, &end, data, len);
-		if (!end)
+		if (!end) {
+			if (n < 0)
+				g_http_stat.malformed_chunk_size++;
 			break;
+		}
 		c->body_len = strtoull(__skip_lws(c->line), NULL, 16);
 		if (c->body_len > 0)
 			c->state = HTTP_STATE_MSG_CHUNK_DATA;
@@ -695,23 +736,33 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		assert(c->body_len > 0);
 		n = MIN(len, c->body_len);
 		c->body_len -= n;
-		if (decode_content(pasr, c, dir, data, n, user))
+		if (decode_content(pasr, c, dir, data, n, user)) {
+			g_http_stat.malformed_content_encoding++;
 			goto err;
+		}
 		if (c->body_len == 0)
 			c->state = HTTP_STATE_MSG_CHUNK_CRLF;
 		break;
 	case HTTP_STATE_MSG_CHUNK_CRLF:
 		n = http_get_line(c, &end, data, len);
-		if (!end)
+		if (!end) {
+			if (n < 0)
+				g_http_stat.malformed_chunk_data++;
 			break;
-		if (c->line_len != 0)
+		}
+		if (c->line_len != 0) {
+			g_http_stat.malformed_chunk_data++;
 			goto err;
+		}
 		c->state = HTTP_STATE_MSG_CHUNK_SIZE;
 		break;
 	case HTTP_STATE_MSG_CHUNK_TRAILER:
 		n = http_parse_msg_hdr(pasr, c, &end, dir, data, len, user);
-		if (!end)
+		if (!end) {
+			if (n < 0)
+				g_http_stat.malformed_trailer++;
 			break;
+		}
 		http_parse_ctx_common_reset(c);
 		call_msg_end_handler(pasr, dir, user);
 		break;

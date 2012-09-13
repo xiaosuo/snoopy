@@ -19,6 +19,24 @@
 #ifndef __HTTP_H
 #define __HTTP_H
 
+#include <stdint.h>
+
+struct http_stat {
+	uint64_t	malformed_start_line;
+	uint64_t	malformed_request_line;
+	uint64_t	malformed_status_line;
+	uint64_t	malformed_header;
+	uint64_t	malformed_content_encoding;
+	uint64_t	malformed_chunk_size;
+	uint64_t	malformed_chunk_data;
+	uint64_t	malformed_trailer;
+	uint64_t	good;
+};
+
+extern struct http_stat g_http_stat;
+
+void http_stat_show(void);
+
 typedef void (*http_request_line_handler)(const char *method, const char *path,
 		int minor_ver, void *user);
 typedef void (*http_status_line_handler)(int minor_ver, int status_code,
