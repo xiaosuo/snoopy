@@ -22,6 +22,7 @@
 #include <stdint.h>
 
 struct http_stat {
+	uint64_t	overflowed_line;
 	uint64_t	malformed_start_line;
 	uint64_t	malformed_request_line;
 	uint64_t	malformed_status_line;

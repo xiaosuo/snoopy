@@ -33,6 +33,8 @@ struct http_stat g_http_stat = { 0 };
 
 void http_stat_show(void)
 {
+	printf("http overflowed line: %" PRIu64 "\n",
+	       g_http_stat.overflowed_line);
 	printf("http malformed start line: %" PRIu64 "\n",
 	       g_http_stat.malformed_start_line);
 	printf("http malformed request-line: %" PRIu64 "\n",
@@ -196,8 +198,10 @@ static void http_parse_ctx_common_reset(struct http_parse_ctx_common *c)
 static int http_parse_ctx_common_add_line(struct http_parse_ctx_common *c,
 		const unsigned char *str, int len)
 {
-	if (c->line_len + len >= sizeof(c->line))
+	if (c->line_len + len >= sizeof(c->line)) {
+		g_http_stat.overflowed_line++;
 		return -1;
+	}
 	memcpy(c->line + c->line_len, str, len);
 	c->line_len += len;
 	c->line[c->line_len] = '\0';
