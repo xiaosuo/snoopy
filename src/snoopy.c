@@ -629,7 +629,7 @@ static void inspect_text(const unsigned char *data, int len, void *user)
 #endif
 	struct patn_user pn = {
 		.ip	= hu->ip,
-		.r	= slist_first(&fc->req_list),
+		.r	= stlist_first(&fc->req_list),
 		.fc	= fc,
 	};
 	patn_sch(fc->snoopy->patn_list, fc->sch_ctx, data, len, log_keyword,
