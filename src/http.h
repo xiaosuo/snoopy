@@ -23,14 +23,11 @@
 
 struct http_stat {
 	uint64_t	overflowed_line;
-	uint64_t	malformed_start_line;
 	uint64_t	malformed_request_line;
 	uint64_t	malformed_status_line;
 	uint64_t	malformed_header;
 	uint64_t	malformed_content_encoding;
-	uint64_t	malformed_chunk_size;
 	uint64_t	malformed_chunk_crlf;
-	uint64_t	malformed_trailer;
 	uint64_t	good;
 };
 
