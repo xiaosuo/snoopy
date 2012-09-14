@@ -162,6 +162,8 @@ enum {
 	HTTP_CE_DEFLATE,
 };
 
+#define HTTP_BODY_LEN_INFI	0xffffffffffffffffULL
+
 struct http_parse_ctx_common {
 	int			state;
 	int			minor_state;
@@ -228,6 +230,8 @@ void http_parse_ctx_free(http_parse_ctx_t *ctx)
 			inflateEnd(ctx->common[dir].streamp);
 			free(ctx->common[dir].streamp);
 		}
+		if (ctx->common[dir].body_len == HTTP_BODY_LEN_INFI)
+			g_http_stat.good++;
 	}
 	free(ctx);
 }
@@ -491,6 +495,9 @@ static int http_parse_header_field(http_parser_t *pasr,
 	} else if (fn_len == 16 && strcasecmp(hdr, "Content-Encoding") == 0) {
 		if (http_parse_content_encoding(c, fv))
 			goto err;
+	} else if (fn_len == 10 && strcasecmp(hdr, "Connection") == 0) {
+		if (strcasecmp(fv, "close") == 0 && c->body_len == 0)
+			c->body_len = HTTP_BODY_LEN_INFI;
 	}
 
 	call_header_field_handler(pasr, dir, hdr, fn_len, fv, fv_len, user);
@@ -686,7 +693,8 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 	case HTTP_STATE_MSG_BODY:
 		assert(c->body_len > 0);
 		n = MIN(len, c->body_len);
-		c->body_len -= n;
+		if (c->body_len != HTTP_BODY_LEN_INFI)
+			c->body_len -= n;
 		if (decode_content(pasr, c, dir, data, n, user))
 			goto err;
 		if (c->body_len == 0) {

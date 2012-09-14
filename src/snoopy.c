@@ -139,8 +139,6 @@ static void flow_ctx_free_data(struct flow_ctx *fc)
 		stlist_del_head(&fc->req_list, r, link);
 		http_req_free(r);
 	}
-	if (fc->req_part)
-		http_req_free(fc->req_part);
 	if (fc->sch_ctx)
 		patn_sch_ctx_free(fc->sch_ctx);
 	if (fc->http_ctx)
@@ -408,8 +406,12 @@ static void save_path(const char *method, const char *path,
 	struct http_user *hu = user;
 	struct flow_ctx *fc = hu->fc;
 
-	if (!fc->req_part && !(fc->req_part = http_req_alloc()))
-		goto err;
+	if (!fc->req_part) {
+		fc->req_part = http_req_alloc();
+		if (!fc->req_part)
+			goto err;
+		stlist_add_tail(&fc->req_list, fc->req_part, link);
+	}
 
 	assert(fc->req_part->path == NULL);
 
@@ -448,12 +450,9 @@ static void end_req(void *user)
 {
 	struct http_user *hu = user;
 	struct flow_ctx *fc = hu->fc;
-	struct http_req *r;
 
-	if ((r = fc->req_part)) {
+	if (fc->req_part)
 		fc->req_part = NULL;
-		stlist_add_tail(&fc->req_list, r, link);
-	}
 }
 
 /*
