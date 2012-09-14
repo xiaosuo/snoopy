@@ -29,7 +29,7 @@ struct http_stat {
 	uint64_t	malformed_header;
 	uint64_t	malformed_content_encoding;
 	uint64_t	malformed_chunk_size;
-	uint64_t	malformed_chunk_data;
+	uint64_t	malformed_chunk_crlf;
 	uint64_t	malformed_trailer;
 	uint64_t	good;
 };

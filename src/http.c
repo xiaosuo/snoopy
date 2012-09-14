@@ -47,8 +47,8 @@ void http_stat_show(void)
 	       g_http_stat.malformed_content_encoding);
 	printf("http malformed chunk-size: %" PRIu64 "\n",
 	       g_http_stat.malformed_chunk_size);
-	printf("http malformed chunk-data: %" PRIu64 "\n",
-	       g_http_stat.malformed_chunk_data);
+	printf("http malformed chunk-crlf: %" PRIu64 "\n",
+	       g_http_stat.malformed_chunk_crlf);
 	printf("http malformed trailer: %" PRIu64 "\n",
 	       g_http_stat.malformed_trailer);
 	printf("http good: %" PRIu64 "\n", g_http_stat.good);
@@ -751,11 +751,11 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		n = http_get_line(c, &end, data, len);
 		if (!end) {
 			if (n < 0)
-				g_http_stat.malformed_chunk_data++;
+				g_http_stat.malformed_chunk_crlf++;
 			break;
 		}
 		if (c->line_len != 0) {
-			g_http_stat.malformed_chunk_data++;
+			g_http_stat.malformed_chunk_crlf++;
 			goto err;
 		}
 		c->state = HTTP_STATE_MSG_CHUNK_SIZE;
