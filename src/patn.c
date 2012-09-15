@@ -88,6 +88,7 @@ void patn_state_free(struct patn_state *s)
 		slist_del_head(&s->res_list, r, link);
 		free(r);
 	}
+	free(s);
 }
 
 struct patn_list {
