@@ -88,7 +88,7 @@ struct flow_stat g_flow_stat = { 0 };
 
 void flow_stat_show(void)
 {
-	printf("flow ceate: %" PRIu64 "\n", g_flow_stat.create);
+	printf("flow create: %" PRIu64 "\n", g_flow_stat.create);
 	printf("flow normal: %" PRIu64 "\n", g_flow_stat.normal);
 	printf("flow gc: %" PRIu64 "\n", g_flow_stat.gc);
 	printf("flow reset: %" PRIu64 "\n", g_flow_stat.reset);
