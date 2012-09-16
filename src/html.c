@@ -499,6 +499,11 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 			ctx->state = HTML_STATE_ATTR_VAL_SQ;
 			ctx->attr_val[0] = '\0';
 			break;
+		case '>': /* empty value */
+			ctx->attr_val[0] = '\0';
+			html_handle_attr(ctx);
+			html_cdata_start(ctx);
+			break;
 		default:
 			if (is_attr_val(*data)) {
 				ctx->state = HTML_STATE_ATTR_VAL_UQ;
@@ -849,6 +854,10 @@ int main(void)
 	TEST_ONE("<img src='xxx'alt=ok>", "");
 	TEST_ONE("<a href=a'\"`=</>", "");
 	assert(strcmp(ctx->attr_val, "a'\"`=</") == 0);
+	TEST_ONE("<a href=>", "");
+	assert(strcmp(ctx->attr_val, "") == 0);
+	TEST_ONE("<a href=  >", "");
+	assert(strcmp(ctx->attr_val, "") == 0);
 	assert(strcmp(ctx->charset, "gb18030") == 0);
 	ctx->charset[0] = '\0';
 	TEST_ONE("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=GB2312\"/>", "");
