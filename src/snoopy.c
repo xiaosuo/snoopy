@@ -97,6 +97,7 @@ struct http_req {
 	bool				ignore;
 	stlist_entry(struct http_req)	link;
 	char				charset[HTML_CHARSET_SIZE];
+	int				status_code;
 };
 
 static struct http_req *http_req_alloc()
@@ -421,6 +422,17 @@ err:
 	return;
 }
 
+static void save_status_code(int minor_ver, int status_code,
+		const char *reason_phase, void *user)
+{
+	struct http_user *hu = user;
+	struct flow_ctx *fc = hu->fc;
+	struct http_req *r;
+
+	if ((r = stlist_first(&fc->req_list)))
+		r->status_code = status_code;
+}
+
 static void save_host(const char *name, int name_len,
 		const char *value, int value_len, void *user)
 {
@@ -672,10 +684,12 @@ static void end_res(void *user)
 
 	if (!(r = stlist_first(&fc->req_list)))
 		goto err;
-	stlist_del_head(&fc->req_list, r, link);
-	http_req_free(r);
-	if (fc->sch_ctx)
-		patn_sch_ctx_reset(fc->sch_ctx);
+	if ((r->status_code / 100) != 1) {
+		stlist_del_head(&fc->req_list, r, link);
+		http_req_free(r);
+		if (fc->sch_ctx)
+			patn_sch_ctx_reset(fc->sch_ctx);
+	}
 err:
 	return;
 }
@@ -799,6 +813,7 @@ int main(int argc, char *argv[])
 	if (!ctx.pasr)
 		die("failed to allocate a http parser\n");
 	http_parser_set_request_line_handler(ctx.pasr, save_path);
+	http_parser_set_status_line_handler(ctx.pasr, save_status_code);
 	http_parser_set_header_field_handler(ctx.pasr, PKT_DIR_C2S, save_host);
 	http_parser_set_header_field_handler(ctx.pasr, PKT_DIR_S2C,
 			parse_res_hdr_fild);
