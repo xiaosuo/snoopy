@@ -247,7 +247,8 @@ static int html_handle_data(html_parse_ctx_t *ctx, const unsigned char *data,
 		goto out;
 	}
 	if (ctx->cd == (iconv_t)-1 &&
-	    (ctx->cd = iconv_open("utf-8", ctx->charset)) == (iconv_t)-1)
+	    (ctx->cd = iconv_open("UTF-8//IGNORE",
+				  ctx->charset)) == (iconv_t)-1)
 		goto err;
 	if (ctx->in_buf_len > 0) {
 		unsigned char outbuf[HTML_IN_BUF_SIZE * 2];
