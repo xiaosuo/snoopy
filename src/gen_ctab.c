@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
 		if (i != 0 && !(ctab[i] & CTAB_SPACE) && !strchr("/=>\"'<", i))
 			ctab[i] |= CTAB_ATTR_NAME;
 
-		if (i != 0 && !(ctab[i] & CTAB_SPACE) && !strchr(">\"'<=`", i))
+		if (i != 0 && !(ctab[i] & CTAB_SPACE) && i != '>')
 			ctab[i] |= CTAB_ATTR_VAL;
 	}
 

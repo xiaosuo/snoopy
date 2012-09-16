@@ -490,12 +490,6 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 		break;
 	case HTML_STATE_BFOR_ATTR_VAL:
 		n = 1;
-		if (is_attr_val(*data)) {
-			ctx->state = HTML_STATE_ATTR_VAL_UQ;
-			strlncpy(ctx->attr_val, sizeof(ctx->attr_val),
-				 (const char *)data, 1);
-			break;
-		}
 		switch (*data) {
 		case '"':
 			ctx->state = HTML_STATE_ATTR_VAL_DQ;
@@ -506,6 +500,12 @@ static int __html_parse(html_parse_ctx_t *ctx, const unsigned char *data,
 			ctx->attr_val[0] = '\0';
 			break;
 		default:
+			if (is_attr_val(*data)) {
+				ctx->state = HTML_STATE_ATTR_VAL_UQ;
+				strlncpy(ctx->attr_val, sizeof(ctx->attr_val),
+					 (const char *)data, 1);
+				break;
+			}
 			if (!is_space(*data))
 				goto malformed;
 			break;
@@ -847,6 +847,8 @@ int main(void)
 	TEST_ONE("<p>I <em>Love</em> You</p>", "I Love You");
 	TEST_ONE("<?xml version=\"1.0\" encoding=\"gb18030\" ?>", "");
 	TEST_ONE("<img src='xxx'alt=ok>", "");
+	TEST_ONE("<a href=a'\"`=</>", "");
+	assert(strcmp(ctx->attr_val, "a'\"`=</") == 0);
 	assert(strcmp(ctx->charset, "gb18030") == 0);
 	ctx->charset[0] = '\0';
 	TEST_ONE("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=GB2312\"/>", "");
