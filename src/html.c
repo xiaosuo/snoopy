@@ -559,12 +559,16 @@ attr_val_xq:
 		goto attr_val_xq;
 		break;
 	case HTML_STATE_SELF_CLS_START_TAG: /* <[a-z][A-Z].../ */
-		if (*data == '>') {
+		n = 1;
+		switch (*data) {
+		case '>':
 			ctx->state = HTML_STATE_DATA;
-			n = 1;
+			break;
+		default:
+			if (!is_space(*data))
+				goto malformed;
 			break;
 		}
-		goto malformed;
 		break;
 	case HTML_STATE_END_TAG_OPEN: /* </ */
 		ptr = memchr(data, '>', len);
@@ -858,6 +862,7 @@ int main(void)
 	assert(strcmp(ctx->attr_val, "") == 0);
 	TEST_ONE("<a href=  >", "");
 	assert(strcmp(ctx->attr_val, "") == 0);
+	TEST_ONE("<hr /  >", "");
 	assert(strcmp(ctx->charset, "gb18030") == 0);
 	ctx->charset[0] = '\0';
 	TEST_ONE("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=GB2312\"/>", "");

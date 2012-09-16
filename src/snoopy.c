@@ -45,8 +45,19 @@
 
 #ifdef NDEBUG
 # define pr_debug(fmt, args...) do {} while (0)
+# define pr_ip(ip) do { } while (0)
 #else
-# define pr_debug(fmt, args...) printf(fmt, ##args)
+# define pr_debug(fmt, args...) do {} while (0)
+//# define pr_debug(fmt, args...) printf(fmt, ##args)
+static inline void pr_ip(const struct ip *ip)
+{
+	const struct tcphdr *th;
+
+	th = (const struct tcphdr *)(((const char *)ip) + ip->ip_hl * 4);
+	printf(NIPQUAD_FMT ":%hu->" NIPQUAD_FMT ":%hu\n",
+	       NIPQUAD(ip->ip_src), ntohs(th->th_sport),
+	       NIPQUAD(ip->ip_dst), ntohs(th->th_dport));
+}
 #endif /* NDEBUG */
 
 static void usage(FILE *out)
@@ -214,6 +225,7 @@ static void stream_inspect(flow_t *f, int dir, const unsigned char *data,
 		goto stop_inspect;
 	if (http_parse(fu->sc->pasr, fc->http_ctx, dir, data, len, &hu) ||
 	    fc->stop_inspect) {
+		pr_ip(hu.ip);
 stop_inspect:
 		flow_ctx_reset(fc);
 		fc->stop_inspect = true;
@@ -664,6 +676,7 @@ static void inspect_body(const unsigned char *data, int len, void *user)
 				goto err;
 			if (html_parse(r->html_ctx, data, len, inspect_text,
 				       hu)) {
+				pr_ip(hu->ip);
 				r->ignore = true;
 				goto err;
 			}

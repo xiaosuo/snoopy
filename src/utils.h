@@ -24,6 +24,13 @@
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
+#define NIPQUAD_FMT "%hhu.%hhu.%hhu.%hhu"
+#define NIPQUAD(addr) \
+	((uint8_t *)&addr)[0], \
+	((uint8_t *)&addr)[1], \
+	((uint8_t *)&addr)[2], \
+	((uint8_t *)&addr)[3]
+
 int url_decode(unsigned char *buf, int len);
 void *xmemdup(const void *data, int len);
 int if_get_mtu(const char *name);

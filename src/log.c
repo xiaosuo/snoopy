@@ -17,6 +17,7 @@
  */
 
 #include "log.h"
+#include "utils.h"
 #include <assert.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -36,13 +37,6 @@ int log_open(const char *fn)
 
 	return 0;
 }
-
-#define NIPQUAD_FMT "%hhu.%hhu.%hhu.%hhu"
-#define NIPQUAD(addr) \
-	((uint8_t *)&addr)[0], \
-	((uint8_t *)&addr)[1], \
-	((uint8_t *)&addr)[2], \
-	((uint8_t *)&addr)[3]
 
 int log_write(const struct timeval *ts, be32_t clnt, be32_t serv,
 	      const char *host, const char *path, const char *keyword)
