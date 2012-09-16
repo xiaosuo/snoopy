@@ -64,7 +64,6 @@ enum html_state {
 	HTML_STATE_ATTR_VAL_UQ,
 	HTML_STATE_ATTR_VAL_SQ,
 	HTML_STATE_ATTR_VAL_DQ,
-	HTML_STATE_AFTR_ATTR_VAL,
 	HTML_STATE_SELF_CLS_START_TAG,
 	HTML_STATE_END_TAG_OPEN,	/* </ */
 	HTML_STATE_PI,			/* <? */
@@ -543,7 +542,7 @@ attr_val_xq:
 				 (const char *)data, n);
 			break;
 		}
-		ctx->state = HTML_STATE_AFTR_ATTR_VAL;
+		ctx->state = HTML_STATE_BFOR_ATTR_NAME;
 		if (ptr != data)
 			strlncat(ctx->attr_val, sizeof(ctx->attr_val),
 				 (const char *)data, ptr - data);
@@ -553,22 +552,6 @@ attr_val_xq:
 	case HTML_STATE_ATTR_VAL_DQ:
 		ptr = memchr(data, '"', len);
 		goto attr_val_xq;
-		break;
-	case HTML_STATE_AFTR_ATTR_VAL:
-		n = 1;
-		switch (*data) {
-		case '/':
-			ctx->state = HTML_STATE_SELF_CLS_START_TAG;
-			break;
-		case '>':
-			html_cdata_start(ctx);
-			break;
-		default:
-			if (is_space(*data))
-				ctx->state = HTML_STATE_BFOR_ATTR_NAME;
-			else
-				goto malformed;
-		}
 		break;
 	case HTML_STATE_SELF_CLS_START_TAG: /* <[a-z][A-Z].../ */
 		if (*data == '>') {
@@ -863,6 +846,7 @@ int main(void)
 	TEST_ONE("<input value=abc/ name=path>", "");
 	TEST_ONE("<p>I <em>Love</em> You</p>", "I Love You");
 	TEST_ONE("<?xml version=\"1.0\" encoding=\"gb18030\" ?>", "");
+	TEST_ONE("<img src='xxx'alt=ok>", "");
 	assert(strcmp(ctx->charset, "gb18030") == 0);
 	ctx->charset[0] = '\0';
 	TEST_ONE("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=GB2312\"/>", "");
