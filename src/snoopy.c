@@ -744,7 +744,6 @@ static void show_stat(struct snoopy_ctx *ctx)
 		show_pcap_stat(p);
 	show_snoopy_stat();
 	flow_stat_show();
-	printf("flow count: %d\n", g_flow_cnt);
 	http_stat_show();
 	html_stat_show();
 }

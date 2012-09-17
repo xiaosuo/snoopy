@@ -38,6 +38,7 @@ struct flow_stat {
 	uint64_t	reset;
 	uint64_t	loss_of_sync;
 	uint64_t	early_drop;
+	uint64_t	active;
 };
 
 extern struct flow_stat g_flow_stat;
@@ -57,7 +58,5 @@ int flow_init(void);
 int flow_inspect(struct ip *ip, struct tcphdr *tcph, const unsigned char *data,
 		int len, flow_data_handler h, void *user);
 void flow_exit(void);
-
-extern int g_flow_cnt;
 
 #endif /* __FLOW_H */

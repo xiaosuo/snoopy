@@ -83,7 +83,6 @@ struct flow_gc_list {
 };
 
 static list_head( , struct flow) *l_hash_table = NULL;
-int g_flow_cnt = 0;
 struct flow_stat g_flow_stat = { 0 };
 
 void flow_stat_show(void)
@@ -94,6 +93,7 @@ void flow_stat_show(void)
 	printf("flow reset: %" PRIu64 "\n", g_flow_stat.reset);
 	printf("flow loss of sync: %" PRIu64 "\n", g_flow_stat.loss_of_sync);
 	printf("flow early drop: %" PRIu64 "\n", g_flow_stat.early_drop);
+	printf("flow active: %" PRIu64 "\n", g_flow_stat.active);
 }
 
 int flow_add_tag(flow_t *f, int id, void *data, void (*free)(void *data))
@@ -169,7 +169,7 @@ static void flow_free(struct flow *f)
 	list_del(f, hash_link);
 	flow_gc_del(f);
 	free(f);
-	--g_flow_cnt;
+	--g_flow_stat.active;
 }
 
 static inline uint32_t flow_hash(be32_t src, be32_t dst, be16_t sport,
@@ -194,7 +194,7 @@ struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
 	buf_init(&f->buf[PKT_DIR_S2C], 0);
 	slist_head_init(&f->tag_list);
 	tlist_entry_init(&f->gc_link);
-	++g_flow_cnt;
+	++g_flow_stat.active;
 	g_flow_stat.create++;
 
 	return f;
@@ -231,7 +231,7 @@ static struct flow *flow_get(struct ip *ip, struct tcphdr *tcph, int *dir)
 
 	/* the flow table is full, so we need to drop some incomplete
 	 * connection randomly to free space */
-	while (g_flow_cnt >= FLOW_NR_MAX) {
+	while (g_flow_stat.active >= FLOW_NR_MAX) {
 		int bucket;
 		struct flow *df = NULL;
 
