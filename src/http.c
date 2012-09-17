@@ -20,6 +20,7 @@
 #include "utils.h"
 #include "flow.h"
 #include "ctab.h"
+#include "dlbuf.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -150,6 +151,7 @@ enum {
 };
 
 #define HTTP_LINE_SIZE	1024
+#define HTTP_LINE_MAX	4096
 
 enum {
 	MINOR_STATE_INIT,
@@ -167,18 +169,17 @@ enum {
 struct http_parse_ctx_common {
 	int			state;
 	int			minor_state;
-	unsigned long long	body_len;
-	int			line_len;
+	struct dlbuf		dlb;
 	unsigned int		is_chunked	: 1;
 	unsigned int		ce		: 2;
 	unsigned int		ce_end		: 1;
+	unsigned long long	body_len;
 	z_streamp		streamp;
-	char			line[HTTP_LINE_SIZE]; /* it must be the last */
 };
 
 static void http_parse_ctx_common_init(struct http_parse_ctx_common *c)
 {
-	memset(c, 0, offsetof(struct http_parse_ctx_common, line));
+	memset(c, 0, sizeof(*c));
 }
 
 static void http_parse_ctx_common_reset(struct http_parse_ctx_common *c)
@@ -189,20 +190,6 @@ static void http_parse_ctx_common_reset(struct http_parse_ctx_common *c)
 	}
 	g_http_stat.good++;
 	http_parse_ctx_common_init(c);
-}
-
-static int http_parse_ctx_common_add_line(struct http_parse_ctx_common *c,
-		const unsigned char *str, int len)
-{
-	if (c->line_len + len >= sizeof(c->line)) {
-		g_http_stat.overflowed_line++;
-		return -1;
-	}
-	memcpy(c->line + c->line_len, str, len);
-	c->line_len += len;
-	c->line[c->line_len] = '\0';
-
-	return 0;
 }
 
 struct http_parse_ctx {
@@ -333,15 +320,15 @@ static int http_get_line(struct http_parse_ctx_common *c,
 	ptr = memchr(data, '\n', len);
 	if (ptr) {
 		n = ptr - data;
-		if (http_parse_ctx_common_add_line(c, data, n))
+		if (dlbuf_append(&c->dlb, data, n, HTTP_LINE_MAX))
 			goto err;
-		if (c->line_len > 0 && c->line[c->line_len - 1] == '\r')
-			c->line[--c->line_len] = '\0';
+		if (c->dlb.len > 0 && c->dlb.buf[c->dlb.len - 1] == '\r')
+			c->dlb.buf[--c->dlb.len] = '\0';
 		n++;
 		*end = true;
 	} else {
 		n = len;
-		if (http_parse_ctx_common_add_line(c, data, n))
+		if (dlbuf_append(&c->dlb, data, n, HTTP_LINE_MAX))
 			goto err;
 	}
 
@@ -520,7 +507,7 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 		n = http_get_line(c, &eol, data, len);
 		if (!eol)
 			break;
-		if (c->line_len == 0) {
+		if (c->dlb.len == 0) {
 			*end = true;
 			break;
 		}
@@ -531,17 +518,17 @@ static int http_parse_msg_hdr(http_parser_t *pasr,
 		if (is_lws(data[0])) {
 			/* LWS */
 			n = 1;
-			if (http_parse_ctx_common_add_line(c, data, n))
+			if (dlbuf_append(&c->dlb, data, n, HTTP_LINE_MAX))
 				goto err;
 			break;
 		}
 		n = 0;
-		if (http_parse_header_field(pasr, c, dir, c->line,
-				c->line_len, user)) {
+		if (http_parse_header_field(pasr, c, dir, c->dlb.buf,
+				c->dlb.len, user)) {
 			g_http_stat.malformed_header++;
 			goto err;
 		}
-		c->line_len = 0;
+		c->dlb.len = 0;
 		break;
 	default:
 		abort();
@@ -657,23 +644,23 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		if (!end)
 			break;
 		/* ignore empty lines before start lines */
-		if (__space_len(c->line) == c->line_len) {
-			c->line_len = 0;
+		if (__space_len(c->dlb.buf) == c->dlb.len) {
+			c->dlb.len = 0;
 			break;
 		}
 		c->state = HTTP_STATE_MSG_HDR;
 		if (dir == PKT_DIR_C2S) {
-			if (http_parse_request_line(pasr, c->line, user)) {
+			if (http_parse_request_line(pasr, c->dlb.buf, user)) {
 				g_http_stat.malformed_request_line++;
 				goto err;
 			}
 		} else {
-			if (http_parse_status_line(pasr, c->line, user)) {
+			if (http_parse_status_line(pasr, c->dlb.buf, user)) {
 				g_http_stat.malformed_status_line++;
 				goto err;
 			}
 		}
-		c->line_len = 0;
+		c->dlb.len = 0;
 		break;
 	case HTTP_STATE_MSG_HDR:
 		n = http_parse_msg_hdr(pasr, c, &end, dir, data, len, user);
@@ -681,13 +668,13 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 			break;
 		if (c->is_chunked) {
 			c->state = HTTP_STATE_MSG_CHUNK_SIZE;
-			c->line_len = 0;
+			c->dlb.len = 0;
 		} else if (c->body_len == 0) {
 			http_parse_ctx_common_reset(c);
 			call_msg_end_handler(pasr, dir, user);
 		} else {
 			c->state = HTTP_STATE_MSG_BODY;
-			c->line_len = 0;
+			c->dlb.len = 0;
 		}
 		break;
 	case HTTP_STATE_MSG_BODY:
@@ -723,12 +710,12 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		n = http_get_line(c, &end, data, len);
 		if (!end)
 			break;
-		c->body_len = strtoull(__skip_lws(c->line), NULL, 16);
+		c->body_len = strtoull(__skip_lws(c->dlb.buf), NULL, 16);
 		if (c->body_len > 0)
 			c->state = HTTP_STATE_MSG_CHUNK_DATA;
 		else
 			c->state = HTTP_STATE_MSG_CHUNK_TRAILER;
-		c->line_len = 0;
+		c->dlb.len = 0;
 		break;
 	case HTTP_STATE_MSG_CHUNK_DATA:
 		assert(c->body_len > 0);
@@ -743,7 +730,7 @@ static int __http_parse(http_parser_t *pasr, struct http_parse_ctx_common *c,
 		n = http_get_line(c, &end, data, len);
 		if (!end)
 			break;
-		if (c->line_len != 0) {
+		if (c->dlb.len != 0) {
 			g_http_stat.malformed_chunk_crlf++;
 			goto err;
 		}
@@ -772,13 +759,20 @@ int http_parse(http_parser_t *pasr, http_parse_ctx_t *ctx, int dir,
 	int n;
 
 	c = &ctx->common[dir];
+	if (c->dlb.size == 0)
+		dlbuf_init(&c->dlb, HTTP_LINE_SIZE);
 	while (len > 0) {
 		n = __http_parse(pasr, c, dir, data, len, user);
-		if (n < 0)
+		if (n < 0) {
+			dlbuf_reset(&c->dlb);
+			dlbuf_reset(&ctx->common[!dir].dlb);
 			return -1;
+		}
 		data += n;
 		len -= n;
 	}
+	if (c->dlb.len == 0)
+		dlbuf_reset(&c->dlb);
 
 	return 0;
 }
