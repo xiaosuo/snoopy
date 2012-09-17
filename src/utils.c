@@ -26,6 +26,7 @@
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
+#include <fcntl.h>
 
 static inline unsigned char hexval(unsigned char v)
 {
@@ -188,6 +189,23 @@ int get_quoted_str_len(const char *str, int size)
 			size--;
 		}
 	}
+}
+
+int get_random_bytes(void *buf, size_t size)
+{
+	int fd = open("/dev/urandom", O_RDONLY);
+
+	if (fd < 0)
+		goto err;
+	if (read(fd, buf, size) != size)
+		goto err2;
+	close(fd);
+
+	return 0;
+err2:
+	close(fd);
+err:
+	return -1;
 }
 
 #ifdef TEST

@@ -21,6 +21,8 @@
 #include "buf.h"
 #include "time.h"
 #include "list.h"
+#include "utils.h"
+#include "jhash.h"
 #include <assert.h>
 #include <time.h>
 #include <inttypes.h>
@@ -83,6 +85,7 @@ struct flow_gc_list {
 };
 
 static list_head( , struct flow) *l_hash_table = NULL;
+static uint32_t l_hash_salt;
 struct flow_stat g_flow_stat = { 0 };
 
 void flow_stat_show(void)
@@ -175,7 +178,25 @@ static void flow_free(struct flow *f)
 static inline uint32_t flow_hash(be32_t src, be32_t dst, be16_t sport,
 	be16_t dport)
 {
-	return src ^ (src >> 16) ^ dst ^ (dst >> 16) ^ ntohs(sport ^ dport);
+	union {
+		struct {
+			be16_t	port1;
+			be16_t	port2;
+		};
+		be32_t	ports;
+	} port;
+
+	if (src > dst)
+		swap(src, dst);
+	if (sport <= dport) {
+		port.port1 = sport;
+		port.port2 = dport;
+	} else {
+		port.port1 = dport;
+		port.port2 = sport;
+	}
+
+	return jhash_3words(src, dst, port.ports, l_hash_salt);
 }
 
 struct flow *flow_alloc(struct ip *ip, struct tcphdr *tcph)
@@ -381,6 +402,8 @@ static void *l_flow_gc_time_update_handle;
 
 int flow_init(void)
 {
+	if (get_random_bytes(&l_hash_salt, sizeof(l_hash_salt)))
+		goto err;
 	l_hash_table = calloc(FLOW_NR_MAX, sizeof(*l_hash_table));
 	if (!l_hash_table)
 		goto err;
