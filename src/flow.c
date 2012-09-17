@@ -411,7 +411,7 @@ int flow_init(void)
 			NULL);
 	if (!l_flow_gc_time_update_handle)
 		goto err2;
-	srandom(time(NULL));
+	srandom(l_hash_salt);
 
 	return 0;
 err2:
