@@ -36,6 +36,11 @@ static inline void dlbuf_init(struct dlbuf *dlb, uint32_t size)
 	dlb->size = dlb->buf ? size : 0;
 }
 
+static inline void dlbuf_free(struct dlbuf *dlb)
+{
+	free(dlb->buf);
+}
+
 static inline void dlbuf_reset(struct dlbuf *dlb)
 {
 	free(dlb->buf);

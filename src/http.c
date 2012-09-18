@@ -213,11 +213,14 @@ void http_parse_ctx_free(http_parse_ctx_t *ctx)
 	int dir;
 
 	for (dir = 0; dir < PKT_DIR_NUM; dir++) {
-		if (ctx->common[dir].streamp) {
-			inflateEnd(ctx->common[dir].streamp);
-			free(ctx->common[dir].streamp);
+		struct http_parse_ctx_common *c = &ctx->common[dir];
+
+		dlbuf_free(&c->dlb);
+		if (c->streamp) {
+			inflateEnd(c->streamp);
+			free(c->streamp);
 		}
-		if (ctx->common[dir].body_len == HTTP_BODY_LEN_INFI)
+		if (c->body_len == HTTP_BODY_LEN_INFI)
 			g_http_stat.good++;
 	}
 	free(ctx);
