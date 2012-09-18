@@ -38,6 +38,12 @@ do { \
 	((uint8_t *)&addr)[2], \
 	((uint8_t *)&addr)[3]
 
+#define die(fmt, args...) \
+do { \
+	fprintf(stderr, fmt, ##args); \
+	exit(EXIT_FAILURE); \
+} while (0)
+
 int url_decode(unsigned char *buf, int len);
 void *xmemdup(const void *data, int len);
 int if_get_mtu(const char *name);

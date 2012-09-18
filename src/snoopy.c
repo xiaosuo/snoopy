@@ -77,12 +77,6 @@ static void usage(FILE *out)
 	fputs("  -z       switch to lazy mode\n", out);
 }
 
-#define die(fmt, args...) \
-do { \
-	fprintf(stderr, fmt, ##args); \
-	goto err; \
-} while (0)
-
 static struct snoopy_stat {
 	uint64_t		pkts;
 	uint64_t		frags;
