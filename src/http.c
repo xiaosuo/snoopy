@@ -150,7 +150,6 @@ enum {
 	HTTP_STATE_MSG_CHUNK_TRAILER,
 };
 
-#define HTTP_LINE_SIZE	1024
 #define HTTP_LINE_MAX	4096
 
 enum {
@@ -762,8 +761,6 @@ int http_parse(http_parser_t *pasr, http_parse_ctx_t *ctx, int dir,
 	int n;
 
 	c = &ctx->common[dir];
-	if (c->dlb.size == 0)
-		dlbuf_init(&c->dlb, HTTP_LINE_SIZE);
 	while (len > 0) {
 		n = __http_parse(pasr, c, dir, data, len, user);
 		if (n < 0) {
