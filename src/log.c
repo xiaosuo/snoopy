@@ -66,8 +66,10 @@ void log_close(void)
 	l_log_fd = -1;
 }
 
-#ifdef TEST
-int main(void)
+#ifndef NDEBUG
+#include "unitest.h"
+
+UNITEST_CASE(log)
 {
 	struct timeval ts;
 
@@ -76,7 +78,6 @@ int main(void)
 	assert(log_write(&ts, 0x01020304, 0x05060708, "example.com",
 			 "/dir/file", "test") == 0);
 	log_close();
-
-	return EXIT_SUCCESS;
+	remove("snoopy.log");
 }
 #endif

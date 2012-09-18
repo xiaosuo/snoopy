@@ -335,28 +335,33 @@ out:
 	return n;
 }
 
-#ifdef TEST
+#ifndef NDEBUG
+#include "unitest.h"
 #include <assert.h>
+
+static char buf[LINE_MAX];
 
 static int patn_print(const unsigned char *patn, void *data)
 {
-	printf("%s\n", patn);
+	strlncat(buf, sizeof(buf), (const char *)patn,
+		 strlen((const char *)patn));
 
 	return 0;
 }
 
-int main(void)
+UNITEST_CASE(patn)
 {
 	patn_list_t *l;
 	patn_sch_ctx_t *c;
 
+	buf[0] = '\0';
 	assert((l = patn_list_load("../test/patn.txt")));
 	assert((c = patn_sch_ctx_alloc()));
-	assert((patn_sch(l, c, "he and she are hers friends", 27,
-			 patn_print, NULL) == 5));
+	assert((patn_sch(l, c,
+			(const unsigned char *)"he and she are hers friends",
+			27, patn_print, NULL) == 5));
+	assert(strcmp(buf, "heheshehehers") == 0);
 	patn_list_free(l);
 	patn_sch_ctx_free(c);
-
-	return EXIT_SUCCESS;
 }
 #endif

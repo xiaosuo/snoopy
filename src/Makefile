@@ -14,7 +14,7 @@ ifneq ($(shell uname),Linux)
 LDFLAGS += -liconv
 endif
 
-.PHONY: all install clean test
+.PHONY: all install clean test unitest
 
 all: ${TARGETS}
 
@@ -28,7 +28,13 @@ install: all
 	install ${TARGETS} ${DESTDIR}${PREFIX}/sbin/
 
 clean:
-	$(RM) *.o ${TARGETS} ctab.c gen_ctab
+	$(RM) *.o ${TARGETS} ctab.c gen_ctab unit
 
 test:
 	../test/test.sh
+
+unitest:
+	$(MAKE) clean
+	$(MAKE) DEBUG=1
+	test -L unit || ln -sf snoopy unit
+	./unit

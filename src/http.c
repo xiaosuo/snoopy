@@ -777,10 +777,11 @@ int http_parse(http_parser_t *pasr, http_parse_ctx_t *ctx, int dir,
 	return 0;
 }
 
-#ifdef TEST
+#ifndef NDEBUG
+#include "unitest.h"
 #include <stdio.h>
 
-void print_body(const unsigned char *data, int len, void *user)
+static void print_body(const unsigned char *data, int len, void *user)
 {
 	int *poff = user;
 	const char *exp = " 1234\n";
@@ -793,7 +794,7 @@ void print_body(const unsigned char *data, int len, void *user)
 	}
 }
 
-void print_hdr(const char *name, int name_len, const char *value,
+static void print_hdr(const char *name, int name_len, const char *value,
 		int value_len, void *user)
 {
 	if (strcasecmp(name, "Host") == 0)
@@ -802,13 +803,13 @@ void print_hdr(const char *name, int name_len, const char *value,
 		assert(strcmp(value, "multi line") == 0);
 }
 
-void print_path(const char *method, const char *path, int minor_ver,
+static void print_path(const char *method, const char *path, int minor_ver,
 		void *user)
 {
 	assert(strcmp(path, "/test") == 0);
 }
 
-int main(void)
+UNITEST_CASE(http)
 {
 	const char *req = 
 			"GET /test HTTP/1.1\r\n"
@@ -836,15 +837,17 @@ int main(void)
 	c = http_parse_ctx_alloc();
 	assert(c);
 
-	assert(http_parse(pasr, c, PKT_DIR_C2S, req, strlen(req), NULL) == 0);
-	assert(http_parse(pasr, c, PKT_DIR_S2C, res, strlen(res), NULL) == 0);
+	assert(http_parse(pasr, c, PKT_DIR_C2S, (const unsigned char *)req,
+			strlen(req), NULL) == 0);
+	assert(http_parse(pasr, c, PKT_DIR_S2C, (const unsigned char *)res,
+			strlen(res), NULL) == 0);
 	for (i = 0; i < strlen(req); i++)
-		assert(http_parse(pasr, c, PKT_DIR_C2S, req + i, 1, NULL) == 0);
+		assert(http_parse(pasr, c, PKT_DIR_C2S,
+				(const unsigned char *)req + i, 1, NULL) == 0);
 	for (i = 0; i < strlen(res); i++)
-		assert(http_parse(pasr, c, PKT_DIR_S2C, res + i, 1, &off) == 0);
+		assert(http_parse(pasr, c, PKT_DIR_S2C,
+				(const unsigned char *)res + i, 1, &off) == 0);
 	http_parser_free(pasr);
 	http_parse_ctx_free(c);
-
-	return EXIT_SUCCESS;
 }
-#endif /* TEST */
+#endif /* NDEBUG */

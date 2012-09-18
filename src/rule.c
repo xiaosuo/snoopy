@@ -210,8 +210,10 @@ err:
 	return -1;
 }
 
-#ifdef TEST
-int main(void)
+#ifndef NDEBUG
+#include "unitest.h"
+
+UNITEST_CASE(rule)
 {
 	rule_list_t *l;
 
@@ -219,5 +221,6 @@ int main(void)
 	assert(rule_list_dump(l, "rules.conf") == 0);
 	assert(rule_list_match(l, inet_addr("192.168.1.2"), htons(80)));
 	rule_list_free(l);
+	remove("rules.conf");
 }
 #endif

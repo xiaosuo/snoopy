@@ -20,6 +20,7 @@
 #define __UTILS_H
 
 #include <stdlib.h>
+#include <stdio.h>
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))

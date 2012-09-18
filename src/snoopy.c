@@ -29,6 +29,7 @@
 #include "list.h"
 #include "ctab.h"
 #include "html.h"
+#include "unitest.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -754,6 +755,14 @@ int main(int argc, char *argv[])
 	const char *key_fn = SNOOPY_KEY_FN;
 	const char *log_fn = SNOOPY_LOG_FN;
 	int buf_size = 0;
+
+#ifndef NDEBUG
+	if (strlen(argv[0]) >= 4 &&
+	    strcmp(argv[0] + strlen(argv[0]) - 4, "unit") == 0) {
+		unitest_run_all();
+		exit(EXIT_SUCCESS);
+	}
+#endif
 
 	/* parse the options */
 	while ((o = getopt(argc, argv, "abhi:k:l:m:r:s:zR:")) != -1) {

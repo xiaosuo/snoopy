@@ -208,19 +208,17 @@ err:
 	return -1;
 }
 
-#ifdef TEST
+#ifndef NDEBUG
+#include "unitest.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
-int main(void)
+UNITEST_CASE(utils)
 {
 	char buf[] = "you%20are%20good%3b%3b";
 
-	assert(url_decode(buf, strlen(buf)) == 14);
-	printf("%s\n", buf);
-	printf("%d\n", if_get_mtu("en1"));
-
-	return 0;
+	assert(url_decode((unsigned char *)buf, strlen(buf)) == 14);
+	assert(strcmp(buf, "you are good;;") == 0);
 }
 #endif

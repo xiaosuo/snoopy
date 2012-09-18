@@ -796,28 +796,30 @@ int html_parse(html_parse_ctx_t *ctx, const unsigned char *data, int len,
 	return 0;
 }
 
-#ifdef TEST
+#ifndef NDEBUG
+#include "unitest.h"
 #include <assert.h>
 
 static char buf[2048];
 
 static void cb(const unsigned char *data, int len, void *user)
 {
-	strlncat(buf, sizeof(buf), data, len);
+	strlncat(buf, sizeof(buf), (const char *)data, len);
 }
 
-int main(void)
+UNITEST_CASE(html)
 {
-	const char *ptr;
+	const unsigned char *ptr;
 	html_parse_ctx_t *ctx = html_parse_ctx_alloc("utf-8");
 
 #define TEST_ONE(data, exp_data) \
 	buf[0] = '\0'; \
-	assert(html_parse(ctx, data, strlen(data), cb, NULL) == 0); \
+	assert(html_parse(ctx, (const unsigned char *)data, strlen(data), \
+			cb, NULL) == 0); \
 	assert(ctx->state == HTML_STATE_DATA); \
 	assert(strcmp(buf, exp_data) == 0); \
 	buf[0] = '\0'; \
-	for (ptr = data; *ptr; ptr++) \
+	for (ptr = (const unsigned char *)data; *ptr; ptr++) \
 		assert(html_parse(ctx, ptr, 1, cb, NULL) == 0); \
 	assert(ctx->state == HTML_STATE_DATA); \
 	assert(strcmp(buf, exp_data) == 0)
@@ -874,7 +876,5 @@ int main(void)
 	TEST_ONE("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=GB2312\" /><h1>\xc4\xe3\xba\xc3</h1>", "\xe4\xbd\xa0\xe5\xa5\xbd");
 	assert(strcmp(ctx->charset, "gb2312") == 0);
 	ctx->charset[0] = '\0';
-
-	return 0;
 }
-#endif
+#endif /* NDEBUG */
