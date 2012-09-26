@@ -208,6 +208,17 @@ err:
 	return -1;
 }
 
+int set_nonblock(int fd)
+{
+	int flags;
+
+	flags = fcntl(fd, F_GETFL);
+	if (flags == -1)
+		return -1;
+
+	return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
 #ifndef NDEBUG
 #include "unitest.h"
 #include <assert.h>

@@ -60,5 +60,6 @@ size_t strlncat(char *dst, size_t size, const char *src, size_t len);
 void strtolower(char *str);
 int get_quoted_str_len(const char *str, int size);
 int get_random_bytes(void *buf, size_t size);
+int set_nonblock(int fd);
 
 #endif /* __UTILS_H */

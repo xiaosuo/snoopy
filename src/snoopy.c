@@ -30,6 +30,7 @@
 #include "ctab.h"
 #include "html.h"
 #include "unitest.h"
+#include "pcap_list.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -126,7 +127,7 @@ struct snoopy_ctx {
 	patn_list_t	*patn_list;
 	bool		is_lazy;
 	bool		inspect_all;
-	const char	*nic;
+	bool		live;
 };
 
 struct flow_ctx {
@@ -237,11 +238,6 @@ err:
 #ifndef ETHERTYPE_VLAN
 #define ETHERTYPE_VLAN 0x8100
 #endif
-
-struct vlan_hdr {
-	be16_t	tci;
-	be16_t	encapsulated_proto;
-};
 
 #ifndef ETHERTYPE_PPPOE
 #define ETHERTYPE_PPPOE 0x8864
@@ -702,30 +698,30 @@ err:
 	return;
 }
 
-static pcap_t *p = NULL;
+static pcap_list_t *pl;
 static bool caught_sigint = false;
 static bool background = false;
 
 static void handle_sigint(int signo)
 {
 	if (!background) {
-		pcap_breakloop(p);
+		pcap_list_breakloop(pl);
 		caught_sigint = 1;
 	}
 }
 
 static void handle_sigquit(int signo)
 {
-	pcap_breakloop(p);
+	pcap_list_breakloop(pl);
 }
 
-static void show_pcap_stat(pcap_t *p)
+static void show_pcap_stat(pcap_list_t *pl)
 {
 	struct pcap_stat st;
 
-	if (pcap_stats(p, &st)) {
+	if (pcap_list_stats(pl, &st)) {
 		fprintf(stderr, "failed to obtain the statistics: %s\n",
-			pcap_geterr(p));
+			pcap_list_geterr(pl));
 		exit(EXIT_FAILURE);
 	}
 	printf("pcap-received: %u\n", st.ps_recv);
@@ -735,8 +731,8 @@ static void show_pcap_stat(pcap_t *p)
 static void show_stat(struct snoopy_ctx *ctx)
 {
 	fputs("\n", stdout);
-	if (ctx->nic)
-		show_pcap_stat(p);
+	if (ctx->live)
+		show_pcap_stat(pl);
 	show_snoopy_stat();
 	flow_stat_show();
 	http_stat_show();
@@ -748,7 +744,6 @@ int main(int argc, char *argv[])
 	int o;
 	const char *file = NULL;
 	int snap_len = 0;
-	char err_buf[PCAP_ERRBUF_SIZE];
 	pcap_handler handler;
 	struct snoopy_ctx ctx = { 0 };
 	const char *rule_fn = SNOOPY_RULE_FN;
@@ -764,6 +759,10 @@ int main(int argc, char *argv[])
 	}
 #endif
 
+	pl = pcap_list_alloc();
+	if (!pl)
+		die("failed to allocate a pcap list\n");
+
 	/* parse the options */
 	while ((o = getopt(argc, argv, "abhi:k:l:m:r:s:zR:")) != -1) {
 		switch (o) {
@@ -778,9 +777,11 @@ int main(int argc, char *argv[])
 			goto out;
 			break;
 		case 'i':
-			if (file || ctx.nic)
+			if (file)
 				die("FILE and NIC are exclusive\n");
-			ctx.nic = optarg;
+			ctx.live = true;
+			if (pcap_list_add(pl, optarg))
+				die("failed to add a NIC to monitor\n");
 			break;
 		case 'k':
 			key_fn = optarg;
@@ -792,8 +793,12 @@ int main(int argc, char *argv[])
 			buf_size = atoi(optarg);
 			break;
 		case 'r':
-			if (file || ctx.nic)
+			if (file)
+				die("duplicate file specified\n");
+			if (ctx.live)
 				die("FILE and NIC are exclusive\n");
+			if (pcap_list_add(pl, optarg))
+				die("failed to add a file to read\n");
 			file = optarg;
 			break;
 		case 's':
@@ -813,7 +818,7 @@ int main(int argc, char *argv[])
 			break;
 		}
 	}
-	if (!file && !ctx.nic)
+	if (!ctx.live && !file)
 		die("FILE or NIC must be given\n");
 
 	/* initialize snoopy ctx */
@@ -846,36 +851,20 @@ int main(int argc, char *argv[])
 		die("failed to install the SIGTERM handler\n");
 
 	/* open the pcap handler */
-	if (ctx.nic) {
-		if (!snap_len) {
-			snap_len = if_get_mtu(ctx.nic);
-			if (snap_len < 0)
-				die("failed to get the mtu of %s\n", ctx.nic);
-			snap_len += sizeof(struct ether_header) +
-					sizeof(struct vlan_hdr);
-			printf("determined snap length: %d\n", snap_len);
-		}
-		err_buf[0] = '\0';
-		p = pcap_create(ctx.nic, err_buf);
-		if (!p)
-			die("failed to open %s: %s\n", ctx.nic, err_buf);
-		pcap_set_snaplen(p, snap_len);
-		pcap_set_promisc(p, 1);
-		pcap_set_timeout(p, 1);
-		pcap_set_buffer_size(p, buf_size * 1024 * 1024);
-		if (pcap_activate(p))
-			die("failed to activate the pcap handler\n");
+	if (ctx.live) {
+		if (pcap_list_open_live(pl, snap_len, buf_size))
+			die("failed to open pcap_list: %s\n",
+			    pcap_list_geterr(pl));
 	} else {
-		p = pcap_open_offline(file, err_buf);
-		if (!p)
-			die("failed to open %s: %s\n", file, err_buf);
+		if (pcap_list_open_offline(pl, file))
+			die("failed to open pcap_list: %s\n",
+			    pcap_list_geterr(pl));
 	}
 
 	/* set the filter if requested */
 	if (optind < argc) {
 		char buf[LINE_MAX];
 		int len = 0, r;
-		struct bpf_program fp;
 
 		/* concat the remain arguments */
 		while (optind < argc) {
@@ -886,17 +875,14 @@ int main(int argc, char *argv[])
 				die("insufficent buffer for pcap-program\n");
 			len += r;
 		}
-		if (pcap_compile(p, &fp, buf, 1, 0))
-			die("failed to compile the pcap-program: %s\n",
-			    pcap_geterr(p));
-		if (pcap_setfilter(p, &fp))
-			die("failed to set the bpf filer: %s\n",
-			    pcap_geterr(p));
-		pcap_freecode(&fp);
+
+		if (pcap_list_setfilter(pl, buf))
+			die("failed to set the pcap-program: %s\n",
+			    pcap_list_geterr(pl));
 	}
 
 	/* start the pcap loop */
-	switch (pcap_datalink(p)) {
+	switch (pcap_list_datalink(pl)) {
 	case DLT_EN10MB:
 		handler = ethernet_handler;
 		break;
@@ -906,17 +892,20 @@ int main(int argc, char *argv[])
 	case DLT_RAW:
 		handler = raw_handler;
 		break;
+	case -1:
+		die("invalid data link\n");
+		break;
 	default:
 		die("unsupported datalnk: %s\n",
-		    pcap_datalink_val_to_name(pcap_datalink(p)));
+		    pcap_datalink_val_to_name(pcap_list_datalink(pl)));
 		break;
 	}
 	if (background && daemon(0, 0))
 		die("failed to become a background daemon\n");
 	while (1) {
-		if (pcap_loop(p, -1, handler, (u_char *)&ctx) == -1)
-			die("pcap_loop(3PCAP) exits with error: %s\n",
-			    pcap_geterr(p));
+		if (pcap_list_loop(pl, handler, (u_char *)&ctx) == -1)
+			die("pcap_list_loop() exits with error: %s\n",
+			    pcap_list_geterr(pl));
 		if (!caught_sigint)
 			break;
 		caught_sigint = false;
@@ -929,7 +918,7 @@ int main(int argc, char *argv[])
 		show_stat(&ctx);
 
 	/* close the pcap handler */
-	pcap_close(p);
+	pcap_list_free(pl);
 
 	patn_list_free(ctx.patn_list);
 	http_parser_free(ctx.pasr);
