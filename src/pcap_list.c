@@ -41,6 +41,7 @@ struct pcap_list {
 	struct pcap_entry			*current_entry;
 	struct pcap_entry			*error_entry;
 	struct pollfd				*pollfd;
+	bool					live;
 };
 
 pcap_list_t *pcap_list_alloc(void)
@@ -110,7 +111,8 @@ void pcap_list_free(pcap_list_t *pl)
 
 void pcap_list_breakloop(pcap_list_t *pl)
 {
-	write(pl->signo_fd[1], "@", 1);
+	if (write(pl->signo_fd[1], "@", 1) != 1)
+		fprintf(stderr, "failed to write to the signal fd\n");
 	if (pl->current_entry)
 		pcap_breakloop(pl->current_entry->p);
 }
@@ -184,6 +186,7 @@ int pcap_list_open_live(pcap_list_t *pl, int snap_len, int buf_size)
 		if (set_nonblock(fd) < 0)
 			goto err2;
 	}
+	pl->live = true;
 
 	return 0;
 err2:
@@ -202,6 +205,7 @@ int pcap_list_open_offline(pcap_list_t *pl, const char *fn)
 	e->p = pcap_open_offline(fn, e->err_buf);
 	if (!e->p)
 		goto err2;
+	pl->live = false;
 
 	return 0;
 err2:
@@ -269,7 +273,6 @@ int pcap_list_loop(pcap_list_t *pl, pcap_handler callback, u_char *user)
 
 	while (1) {
 		struct pollfd *pf;
-		bool got = false;
 		int n = poll(pl->pollfd, pl->n_entries + 1, 1);
 
 		if (n < 0) {
@@ -289,8 +292,8 @@ int pcap_list_loop(pcap_list_t *pl, pcap_handler callback, u_char *user)
 				if (ret == -1) {
 					pl->error_entry = e;
 					goto err;
-				} else if (ret > 0) {
-					got = true;
+				} else if (ret == 0 && !pl->live) {
+					goto out;
 				}
 				if (--n == 0)
 					break;
@@ -303,12 +306,10 @@ int pcap_list_loop(pcap_list_t *pl, pcap_handler callback, u_char *user)
 			while (read(pl->signo_fd[0], &c, 1) == 1)
 				/* nothing */;
 			if (c == '@')
-				break;
-		} else if (!got) {
-			break;
+				return -2;
 		}
 	}
-
+out:
 	return 0;
 err:
 	return -1;
