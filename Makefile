@@ -1,4 +1,4 @@
-.PHONY: all install clean test
+.PHONY: all install clean test unitest
 
-all install clean test:
+all install clean test unitest:
 	$(MAKE) -C src $@
