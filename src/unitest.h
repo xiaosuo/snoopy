@@ -21,6 +21,7 @@
 
 #ifndef NDEBUG
 void unitest_register(const char *name, void (*func)(void));
+void unitest_unregister_all(void);
 void unitest_run_all(void);
 #define UNITEST_CASE(name) \
 static void __unitest_##name(void); \
