@@ -28,8 +28,7 @@ struct unitest_case {
 	stlist_entry(struct unitest_case)	link;
 };
 
-static stlist_head( , struct unitest_case) l_unitest_case_list =
-		STLIST_HEAD_INITIALIZER(&l_unitest_case_list);
+static STLIST_HEAD( , struct unitest_case, l_unitest_case_list);
 
 void unitest_register(const char *name, void (*func)(void))
 {

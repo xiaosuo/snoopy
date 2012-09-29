@@ -28,6 +28,9 @@ struct name { \
 
 #define SLIST_HEAD_INITIALIZER(head) { .first = NULL }
 
+#define SLIST_HEAD(name, type, head) \
+	slist_head(name, type) head = SLIST_HEAD_INITIALIZER(&head)
+
 #define slist_head_init(head) \
 do { \
 	(head)->first = NULL; \
@@ -83,6 +86,9 @@ struct name { \
 	.ptail	= &(head)->first, \
 }
 
+#define STLIST_HEAD(name, type, head) \
+	stlist_head(name, type) head = STLIST_HEAD_INITIALIZER(&head)
+
 #define stlist_head_init(head) \
 do { \
 	(head)->first = NULL; \
@@ -120,6 +126,9 @@ struct name { \
 }
 
 #define LIST_HEAD_INITIALIZER(head)	{ .first = NULL }
+
+#define LIST_HEAD(name, type, head) \
+	list_head(name, type) head = LIST_HEAD_INITIALIZER(&head)
 
 #define list_head_init(head) \
 do { \
@@ -167,6 +176,9 @@ struct name { \
 	.first	= NULL, \
 	.ptail	= &(head)->first, \
 }
+
+#define TLIST_HEAD(name, type, head) \
+	tlist_head(name, type) head = TLIST_HEAD_INITIALIZER(&head)
 
 #define tlist_head_init(head) \
 do { \
