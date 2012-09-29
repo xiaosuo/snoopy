@@ -44,7 +44,7 @@ void *time_register_update_handler(time_update_handler h, void *user)
 	return i;
 }
 
-void time_unregister_update_handler(void *handle)
+void time_deregister_update_handler(void *handle)
 {
 	struct time_update_handler_iter *i, **pp;
 

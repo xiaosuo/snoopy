@@ -43,7 +43,7 @@ void unitest_register(const char *name, void (*func)(void))
 	stlist_add_tail(&l_unitest_case_list, c, link);
 }
 
-void unitest_unregister_all(void)
+void unitest_deregister_all(void)
 {
 	struct unitest_case *c;
 

@@ -26,7 +26,7 @@ extern struct timeval g_time;
 typedef void (*time_update_handler)(const struct timeval *tv, void *user);
 
 void *time_register_update_handler(time_update_handler h, void *user);
-void time_unregister_update_handler(void *handle);
+void time_deregister_update_handler(void *handle);
 
 void time_update(const struct timeval *tv);
 

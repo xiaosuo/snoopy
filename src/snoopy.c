@@ -755,7 +755,7 @@ int main(int argc, char *argv[])
 	if (strlen(argv[0]) >= 4 &&
 	    strcmp(argv[0] + strlen(argv[0]) - 4, "unit") == 0) {
 		unitest_run_all();
-		unitest_unregister_all();
+		unitest_deregister_all();
 		exit(EXIT_SUCCESS);
 	}
 #endif

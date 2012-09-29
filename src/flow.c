@@ -424,7 +424,7 @@ void flow_exit(void)
 {
 	int i;
 
-	time_unregister_update_handler(l_flow_gc_time_update_handle);
+	time_deregister_update_handler(l_flow_gc_time_update_handle);
 	for (i = 0; i < FLOW_NR_MAX; i++) {
 		struct flow *f, *n;
 
