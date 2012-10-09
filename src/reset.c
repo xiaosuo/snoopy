@@ -111,9 +111,9 @@ static int send_tcp(const struct tcpv4 *p)
 int reset(const struct ip *ip)
 {
 	const struct tcphdr *th = (const struct tcphdr *)(((const uint32_t *)ip) + ip->ip_hl);
-	uint32_t ack = ntohl(th->th_seq) + !!(th->th_flags & TH_SYN) +
-		       !!(th->th_flags & TH_FIN) + ntohs(ip->ip_len) -
-		       ip->ip_hl * 4 - th->th_off * 4;
+	uint32_t ack = htonl(ntohl(th->th_seq) + !!(th->th_flags & TH_SYN) +
+			     !!(th->th_flags & TH_FIN) + ntohs(ip->ip_len) -
+			     ip->ip_hl * 4 - th->th_off * 4);
 	struct tcpv4 rst = {
 		.ip = {
 			.ip_v	= 4,
@@ -132,7 +132,7 @@ int reset(const struct ip *ip)
 			.th_sport	= th->th_dport,
 			.th_dport	= th->th_sport,
 			.th_seq		= (th->th_flags & TH_ACK) ? th->th_ack : 0,
-			.th_ack		= htonl(ack),
+			.th_ack		= ack,
 			.th_off		= sizeof(struct tcphdr) / 4,
 			.th_x2		= 0,
 			.th_flags	= TH_RST | TH_ACK,
@@ -144,7 +144,22 @@ int reset(const struct ip *ip)
 
 	rst.th.th_sum = tcp_csum(&rst);
 
+	if (send_tcp(&rst))
+		goto err;
+
+	rst.ip.ip_src = ip->ip_src;
+	rst.ip.ip_dst = ip->ip_dst;
+	rst.th.th_sport = th->th_sport;
+	rst.th.th_dport = th->th_dport;
+	rst.th.th_seq = ack;
+	rst.th.th_ack = th->th_ack;
+	rst.th.th_flags = TH_RST | ((th->th_flags & TH_ACK) ? TH_ACK : 0);
+	rst.th.th_sum = 0;
+	rst.th.th_sum = tcp_csum(&rst);
+
 	return send_tcp(&rst);
+err:
+	return -1;
 }
 
 void reset_exit(void)
