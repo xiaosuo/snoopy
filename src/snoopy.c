@@ -31,6 +31,7 @@
 #include "html.h"
 #include "unitest.h"
 #include "pcap_list.h"
+#include "reset.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -76,6 +77,7 @@ static void usage(FILE *out)
 	fputs("  -r FILE  specify the pcap file\n", out);
 	fputs("  -s LEN   specify the snap length\n", out);
 	fputs("  -z       switch to lazy mode\n", out);
+	fputs("  -A       work in active mode\n", out);
 	fputs("  -R FN    specify the rule file\n", out);
 }
 
@@ -128,6 +130,7 @@ struct snoopy_ctx {
 	bool		is_lazy;
 	bool		inspect_all;
 	bool		live;
+	bool		is_active;
 };
 
 struct flow_ctx {
@@ -620,6 +623,8 @@ static int log_keyword(const unsigned char *k, void *user)
 		      pu->r->host, pu->r->path, (const char *)k);
 	if (r < 0)
 		return r;
+	if (fc->snoopy->is_active)
+		reset(pu->ip);
 	if (fc->snoopy->is_lazy) {
 		fc->stop_inspect = true;
 		return 1;
@@ -765,7 +770,7 @@ int main(int argc, char *argv[])
 		die("failed to allocate a pcap list\n");
 
 	/* parse the options */
-	while ((o = getopt(argc, argv, "abhi:k:l:m:r:s:zR:")) != -1) {
+	while ((o = getopt(argc, argv, "abhi:k:l:m:r:s:zAR:")) != -1) {
 		switch (o) {
 		case 'a':
 			ctx.inspect_all = true;
@@ -810,6 +815,9 @@ int main(int argc, char *argv[])
 		case 'z':
 			ctx.is_lazy = true;
 			break;
+		case 'A':
+			ctx.is_active = true;
+			break;
 		case 'R':
 			rule_fn = optarg;
 			break;
@@ -819,10 +827,15 @@ int main(int argc, char *argv[])
 			break;
 		}
 	}
-	if (!ctx.live && !file)
-		die("FILE or NIC must be given\n");
+	if (!ctx.live) {
+		if (!file)
+			die("FILE or NIC must be given\n");
+		if (ctx.is_active)
+			die("Active mode is only available for live mode\n");
+	}
 
-	/* initialize snoopy ctx */
+	if (ctx.is_active && reset_init())
+		die("failed to initialize reset service\n");
 	if (flow_init())
 		die("failed to initialize flow service\n");
 	if (log_open(log_fn))
@@ -926,6 +939,8 @@ int main(int argc, char *argv[])
 	rule_list_free(ctx.rule_list);
 	log_close();
 	flow_exit();
+	if (ctx.is_active)
+		reset_exit();
 out:
 	return EXIT_SUCCESS;
 err:
