@@ -75,8 +75,8 @@ static void usage(FILE *out)
 	fputs("  -m SZ    specify the pcap buffer size to SZ MB\n", out);
 	fputs("  -r FILE  specify the pcap file\n", out);
 	fputs("  -s LEN   specify the snap length\n", out);
-	fputs("  -R FN    specify the rule file\n", out);
 	fputs("  -z       switch to lazy mode\n", out);
+	fputs("  -R FN    specify the rule file\n", out);
 }
 
 static struct snoopy_stat {
