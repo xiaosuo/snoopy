@@ -695,6 +695,8 @@ static void end_res(void *user)
 		goto err;
 	if ((r->status_code / 100) != 1) {
 		stlist_del_head(&fc->req_list, r, link);
+		if (fc->req_part == r)
+			fc->req_part = NULL;
 		http_req_free(r);
 		if (fc->sch_ctx)
 			patn_sch_ctx_reset(fc->sch_ctx);
