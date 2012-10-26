@@ -916,6 +916,8 @@ int main(int argc, char *argv[])
 		    pcap_datalink_val_to_name(pcap_list_datalink(pl)));
 		break;
 	}
+	if (signal(SIGPIPE, SIG_IGN) == SIG_ERR)
+		die("failed to ignore SIGPIPE\n");
 	if (background && daemon(0, 0))
 		die("failed to become a background daemon\n");
 	while (1) {
