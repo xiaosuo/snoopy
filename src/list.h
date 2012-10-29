@@ -218,4 +218,6 @@ do { \
 		(head)->ptail = (item)->entry.pprev; \
 } while (0)
 
+#define tlist_for_each slist_for_each
+
 #endif /* __LIST_H */
