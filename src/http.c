@@ -183,6 +183,7 @@ static void http_parse_ctx_common_init(struct http_parse_ctx_common *c)
 
 static void http_parse_ctx_common_reset(struct http_parse_ctx_common *c)
 {
+	dlbuf_free(&c->dlb);
 	if (c->streamp) {
 		inflateEnd(c->streamp);
 		free(c->streamp);
