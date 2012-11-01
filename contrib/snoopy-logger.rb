@@ -18,11 +18,12 @@
 #
 
 require 'optparse'
+require 'uri'
 
 LOG_DIR = '/var/log/snoopy.log.d'
 LOG_FN = '/var/log/snoopy.log'
 
-options = {:background => false}
+options = {:background => false, :uri => nil}
 opt_pasr = OptionParser.new do |opts|
   opts.banner = "Usage: #{$0} [options]"
 
@@ -31,6 +32,10 @@ opt_pasr = OptionParser.new do |opts|
 
   opts.on("-b", "--background", "Run as a background daemon") do |b|
     options[:background] = true
+  end
+
+  opts.on('-u', '--uri URL', 'HTTP Post URI') do |u|
+    options[:uri] = URI.parse(u)
   end
 
   opts.on("-h", "--help", "Show this message") do |h|
@@ -42,6 +47,10 @@ opt_pasr.parse!(ARGV)
 if ARGV.length > 0
   puts opt_pasr
   exit(false)
+end
+unless options[:uri]
+  puts 'URI is required'
+  exit(1)
 end
 
 Dir.mkdir(LOG_DIR) unless File.directory?(LOG_DIR)
@@ -67,6 +76,26 @@ if options[:background]
 end
 
 require 'date'
+require 'thread'
+require 'net/http'
+
+q = Queue.new
+pusher = Thread.new do
+  while true
+    sleep(3)
+    log = ''
+    begin
+      while e = q.shift(true)
+        log += e
+      end
+    rescue
+    end
+    begin
+      Net::HTTP.post_form(options[:uri], { 'log' => log }) if log.length > 0
+    rescue
+    end
+  end
+end
 
 out = nil
 cur_date = nil
@@ -87,6 +116,7 @@ while true
         puts 'failed to write log'
         exit(false)
       end
+      q << l
     end
   end
   puts 'snoopy exits. try again'
