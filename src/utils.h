@@ -21,9 +21,16 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stddef.h>
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
+
+#define container_of(ptr, type, member) \
+({ \
+	const typeof(((type *)0)->member) *__mptr__ = (ptr); \
+	(type *)((char *)__mptr__ - offsetof(type, member)); \
+})
 
 #define swap(x, y) \
 do { \

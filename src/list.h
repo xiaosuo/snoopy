@@ -19,6 +19,8 @@
 #ifndef __LIST_H
 #define __LIST_H
 
+#include "utils.h"
+
 /* Singly-linked List */
 
 #define slist_head(name, type) \
@@ -108,6 +110,15 @@ do { \
 } while (0)
 
 #define stlist_first(head) ((head)->first)
+
+#define stlist_last(head, entry) \
+({ \
+	typeof((head)->first) __last__ = (head)->first; \
+	if (__last__) \
+		__last__ = container_of((head)->ptail, \
+				typeof(*((head)->first)), entry.next); \
+	__last__; \
+})
 
 #define stlist_del_head(head, item, entry) \
 do { \
