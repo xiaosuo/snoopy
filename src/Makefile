@@ -30,7 +30,7 @@ install: all
 clean:
 	$(RM) *.o ${TARGETS} ctab.c gen_ctab unit
 
-test:
+test: all
 	../test/test.sh
 
 unitest:
