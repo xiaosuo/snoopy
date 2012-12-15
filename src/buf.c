@@ -54,6 +54,10 @@ int buf_add(struct buf *h, uint32_t seq, const unsigned char *data,
 
 	assert(len > 0);
 
+	/* check if the two ranges overlap */
+	if (SEQ_LE(end, h->seq) || SEQ_GE(seq, h->seq + BUF_LIMIT))
+		goto err;
+
 	/* left edge */
 	mseq = SEQ_GE(seq, h->seq) ? seq : h->seq;
 	data += mseq - seq;
@@ -143,3 +147,17 @@ void buf_drain(struct buf *b)
 		mb_free(m);
 	}
 }
+
+#ifndef NDEBUG
+#include "unitest.h"
+
+UNITEST_CASE(buf)
+{
+	struct buf b;
+
+	buf_init(&b, 708446724);
+	buf_add(&b, 2857469003, NULL, 8);
+	assert(slist_first(&b.mb_list) == NULL);
+}
+
+#endif /* NDEBUG */
