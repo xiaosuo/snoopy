@@ -39,6 +39,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <limits.h>
+#include <fcntl.h>
 #include <pcap/pcap.h>
 #include <pcap/sll.h>
 #include <net/ethernet.h>
@@ -69,6 +70,7 @@ static void usage(FILE *out)
 	fputs("Options:\n", out);
 	fputs("  -a       inspect all contents\n", out);
 	fputs("  -b       run as a background daemon\n", out);
+	fputs("  -f FN    log all the FQDNs\n", out);
 	fputs("  -h       show this message\n", out);
 	fputs("  -i NIC   specify the NIC interface\n", out);
 	fputs("  -k FN    specify the keyword file\n", out);
@@ -439,6 +441,8 @@ static void save_status_code(int minor_ver, int status_code,
 		r->status_code = status_code;
 }
 
+static int log_fqdn_fd = -1;
+
 static void save_host(const char *name, int name_len,
 		const char *value, int value_len, void *user)
 {
@@ -459,6 +463,17 @@ static void save_host(const char *name, int name_len,
 			free(r->host);
 		pr_debug("host: %s\n", value);
 		r->host = strdup(value);
+		if (log_fqdn_fd >= 0 && r->host) {
+			char *ptr = strchr(r->host, ':');
+			char ch;
+
+			if (!ptr)
+				ptr = r->host + strlen(r->host);
+			ch = *ptr;
+			*ptr = '\n';
+			write(log_fqdn_fd, r->host, ptr - r->host + 1);
+			*ptr = ch;
+		}
 	}
 err:
 	return;
@@ -772,13 +787,21 @@ int main(int argc, char *argv[])
 		die("failed to allocate a pcap list\n");
 
 	/* parse the options */
-	while ((o = getopt(argc, argv, "abhi:k:l:m:r:s:zAR:")) != -1) {
+	while ((o = getopt(argc, argv, "abf:hi:k:l:m:r:s:zAR:")) != -1) {
 		switch (o) {
 		case 'a':
 			ctx.inspect_all = true;
 			break;
 		case 'b':
 			background = true;
+			break;
+		case 'f':
+			if (log_fqdn_fd >= 0)
+				die("duplicate `-f'");
+			log_fqdn_fd = open(optarg,
+					O_WRONLY | O_APPEND | O_CREAT, 0644);
+			if (log_fqdn_fd < 0)
+				die("failed to open %s for appending", optarg);
 			break;
 		case 'h':
 			usage(stdout);
