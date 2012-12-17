@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="Snoopy : A lightweight bypass censorship system for HTTP" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Snoopy</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/xiaosuo/snoopy">View on GitHub</a>
+
+          <h1 id="project_title">Snoopy</h1>
+          <h2 id="project_tagline">A lightweight bypass censorship system for HTTP</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/xiaosuo/snoopy/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/xiaosuo/snoopy/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h1>A lightweight bypass censorship system for HTTP</h1>
+
+<h2>Introduction</h2>
+
+<p>It works by inspecting the packets between servers and clients. If some
+sensitive words are seen, it will log the corresponding criterias.</p>
+
+<h2>License</h2>
+
+<p>It is released under GPL v3.</p>
+
+<h2>Copyright</h2>
+
+<p>Changli Gao <a href="mailto:xiaosuo@gmail.com">xiaosuo@gmail.com</a></p>
+
+<h2>Requirements</h2>
+
+<ul>
+<li><a href="http://www.tcpdump.org">libpcap</a></li>
+<li><a href="http://www.zlib.net">zlib</a></li>
+<li>
+<a href="http://www.gnu.org/software/libiconv/">libiconv</a> on non-Linux platforms</li>
+</ul><h2>Install</h2>
+
+<p>Compile the code with</p>
+
+<pre><code>$ make
+</code></pre>
+
+<p>Install the program with</p>
+
+<pre><code>$ sudo make install
+</code></pre>
+
+<p>or</p>
+
+<pre><code># make install
+</code></pre>
+
+<h2>Configurations</h2>
+
+<h3>Rules</h3>
+
+<p>The default rule file is <em>/etc/snoopy/rules.conf</em>, and you can set it to another
+file with option <em>-R</em> too.</p>
+
+<p>A rule occupies one line, and <em>IP Sections</em> and <em>Port Sections</em> are separated
+with <em>:</em>. You can specify <em>IP</em>, <em>IP Range</em> and <em>IP Subnet</em> for <em>IP Sections</em>,
+and you can specify <em>Port</em> and <em>Port Range</em> for <em>Port Sections</em>.</p>
+
+<p>Ex.</p>
+
+<pre><code>192.168.0.0/24:80
+10.0.0.1-10.0.0.10:80-8080
+10.10.10.10:8080
+</code></pre>
+
+<h3>Keywords</h3>
+
+<p>The default keyword file is <em>/etc/snoopy/keywords.conf</em>, and you can set it to
+another file with option <em>-k</em> too.</p>
+
+<p>A keyword occupies one line, must be encoded in UTF-8, and must <em>NOT</em> contains
+any space.</p>
+
+<p>Ex.</p>
+
+<pre><code>test
+你好
+</code></pre>
+
+<h2>Run</h2>
+
+<p>See the help message with</p>
+
+<pre><code>snoopy -h
+</code></pre>
+
+<h2>Log</h2>
+
+<p>The default log file is <em>/var/log/snoopy.log</em>, and you can set it to another
+file with option <em>-l</em> too.</p>
+
+<p>A log occupies one line, and contains <em>Timestamp</em>(derived from
+<a href="http://tools.ietf.org/html/rfc3339">RFC3339</a>), <em>Client IP</em>, <em>Server IP</em>,
+<em>URL</em> and <em>Keyword</em>, which are separated by space.</p>
+
+<p>Ex.</p>
+
+<pre><code>2012-08-15T15:22:52.682786Z 172.168.0.252 172.168.0.2 http://172.168.0.2/index.html?11a11221=111122a222 welcome
+</code></pre>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Snoopy maintained by <a href="https://github.com/xiaosuo">xiaosuo</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
