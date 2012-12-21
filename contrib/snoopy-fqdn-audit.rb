@@ -56,19 +56,15 @@ WHITE_LIST = '/etc/snoopy/snoopy-fqdn-white.list'
 GRAY_LIST = '/etc/snoopy/snoopy-fqdn-gray.list'
 BLACK_LIST = '/etc/snoopy/snoopy-fqdn-black.list'
 INPUT_LOG_FN = '/var/log/snoopy-fqdn.log'
-GRAY_LOG_FN = '/var/log/snoopy-fqdn-gray.log'
-BLACK_LOG_FN = '/var/log/snoopy-fqdn-black.log'
-WHITE_URI = "http://#{HOST}/getlist.php?type=1"
-GRAY_URI = "http://#{HOST}/getlist.php?type=2"
-BLACK_URI = "http://#{HOST}/getlist.php?type=3"
-GRAY_POST_URI = "http://#{HOST}/postlist.php?type=2"
-BLACK_POST_URI = "http://#{HOST}/postlist.php?type=3"
-POST_INTERVAL = 10 * 60 # 10 minutes
+WHITE_URI = "http://#{HOST}/getlist.asp?listtype=1"
+GRAY_URI = "http://#{HOST}/getlist.asp?listtype=3"
+BLACK_URI = "http://#{HOST}/getlist.asp?listtype=2"
+GRAY_POST_URI = "http://#{HOST}/postlist.asp?type=2"
 SYNC_INTERVAL = 10 * 60 # 10 minutes
 
 module FQDN
   class Label
-    attr_accessor :ts
+    attr_accessor :mark
 
     def initialize
       @sub_label = {}
@@ -91,29 +87,28 @@ module FQDN
       end
     end
 
-    def insert(fqdn, ts = nil)
-      ts ||= Time.new - POST_INTERVAL
+    def insert(fqdn)
       cur = @root
       fqdn.split(/\./).reverse.each do |label|
         cur[label] ||= FQDN::Label.new
         cur = cur[label]
       end
-      cur.ts = ts
+      cur.mark = true
     end
 
     def query(fqdn)
       cur = @root
       fqdn.split(/\./).reverse.each do |label|
-        return nil unless cur = cur[label]
-        return cur if cur.ts
+        return false unless cur = cur[label]
+        return true if cur.mark
       end
-      nil
+      false
     end
   end
 end
 
 class LogPoster
-  def initialize(uri, log_path)
+  def initialize(uri)
     @queue = Queue.new
     Thread.new do
       uri = URI.parse(uri)
@@ -127,12 +122,9 @@ class LogPoster
 	end
       end
     end
-    @log = File.open(log_path, 'a')
   end
 
-  def log(ts, fqdn)
-    log = ts.strftime('%FT%T') + ('.%06u' % ts.usec) + ' ' + fqdn + "\n"
-    @log.write(log)
+  def log(fqdn)
     @queue << fqdn
   end
 end
@@ -159,8 +151,7 @@ if options[:background]
 end
 
 # Create two log posters for black and gray logs
-black_log = LogPoster.new(BLACK_POST_URI, BLACK_LOG_FN)
-gray_log = LogPoster.new(GRAY_POST_URI, GRAY_LOG_FN)
+gray_log = LogPoster.new(GRAY_POST_URI)
 white_list = nil
 gray_list = nil
 black_list = nil
@@ -171,7 +162,9 @@ sync_lists = lambda do
   white_list = FQDN::Database.new(WHITE_LIST)
   content = Net::HTTP.get(URI.parse(GRAY_URI))
   File.open(GRAY_LIST, 'w'){|file| file.write(content)}
-  gray_list = FQDN::Database.new(GRAY_LIST)
+  list = {}
+  IO.foreach(GRAY_LIST){|l| list[l.rstrip] = true}
+  gray_list = list
   content = Net::HTTP.get(URI.parse(BLACK_URI))
   File.open(BLACK_LIST, 'w'){|file| file.write(content)}
   black_list = FQDN::Database.new(BLACK_LIST)
@@ -197,27 +190,11 @@ loop do
       # Do nothing with the FQDN in the white list
       next if white_list.query(fqdn)
 
-      now = Time.new
+      next if black_list.query(fqdn)
 
-      label = black_list.query(fqdn)
-      if label
-        if now - label.ts > POST_INTERVAL
-          black_log.log(now, fqdn)
-          label.ts = now
-        end
-        next
-      end
-
-      label = gray_list.query(fqdn)
-      if label
-        if now - label.ts > POST_INTERVAL
-          gray_log.log(now, fqdn)
-          label.ts = now
-        end
-        next
-      else
-        gray_list.insert(fqdn, now)
-        gray_log.log(now, fqdn)
+      unless gray_list[fqdn]
+        gray_list[fqdn] = true
+        gray_log.log(fqdn)
       end
     end
   end
