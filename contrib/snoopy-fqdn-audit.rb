@@ -107,16 +107,18 @@ module FQDN
   end
 end
 
+LogRecord = Struct.new(:ip, :fqdn)
+
 class LogPoster
   def initialize(uri)
     @queue = Queue.new
     Thread.new do
       uri = URI.parse(uri)
       loop do
-        fqdn = @queue.shift
+        record = @queue.shift
 	# Why not use post_form, because post_form doesn't reserve query
 	req = Net::HTTP::Post.new(uri.path + '?' + uri.query)
-	req.form_data = {'fqdn' => fqdn}
+	req.form_data = {'fqdn' => record.fqdn, 'ip' => record.ip}
 	Net::HTTP.new(uri.host, uri.port).start do |http|
 	  http.request(req)
 	end
@@ -124,8 +126,8 @@ class LogPoster
     end
   end
 
-  def log(fqdn)
-    @queue << fqdn
+  def log(ip, fqdn)
+    @queue << LogRecord.new(ip, fqdn)
   end
 end
 
@@ -185,7 +187,7 @@ loop do
     while line = file.gets
       # Drop partial logs
       break unless line[-1, 1] == "\n"
-      fqdn = line.rstrip
+      ip, fqdn = line.rstrip.split(/\s+/)
 
       # Do nothing with the FQDN in the white list
       next if white_list.query(fqdn)
@@ -194,7 +196,7 @@ loop do
 
       unless gray_list[fqdn]
         gray_list[fqdn] = true
-        gray_log.log(fqdn)
+        gray_log.log(ip, fqdn)
       end
     end
   end

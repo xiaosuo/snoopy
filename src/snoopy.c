@@ -466,12 +466,17 @@ static void save_host(const char *name, int name_len,
 		if (log_fqdn_fd >= 0 && r->host) {
 			char *ptr = strchr(r->host, ':');
 			char ch;
+			char buf[LINE_MAX];
+			int len;
 
 			if (!ptr)
 				ptr = r->host + strlen(r->host);
 			ch = *ptr;
-			*ptr = '\n';
-			write(log_fqdn_fd, r->host, ptr - r->host + 1);
+			*ptr = '\0';
+			len = snprintf(buf, sizeof(buf), NIPQUAD_FMT " %s\n",
+				       NIPQUAD(hu->ip->ip_dst.s_addr), r->host);
+			if (len > 0 && len < sizeof(buf))
+				write(log_fqdn_fd, buf, len);
 			*ptr = ch;
 		}
 	}
