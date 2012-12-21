@@ -116,12 +116,12 @@ class LogPoster
       uri = URI.parse(uri)
       loop do
         record = @queue.shift
-	# Why not use post_form, because post_form doesn't reserve query
-	req = Net::HTTP::Post.new(uri.path + '?' + uri.query)
-	req.form_data = {'fqdn' => record.fqdn, 'ip' => record.ip}
-	Net::HTTP.new(uri.host, uri.port).start do |http|
-	  http.request(req)
-	end
+        # Why not use post_form, because post_form doesn't reserve query
+        req = Net::HTTP::Post.new(uri.path + '?' + uri.query)
+        req.form_data = {'fqdn' => record.fqdn, 'ip' => record.ip}
+        Net::HTTP.new(uri.host, uri.port).start do |http|
+          http.request(req)
+        end
       end
     end
   end
